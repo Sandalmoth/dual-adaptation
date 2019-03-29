@@ -1,0 +1,11 @@
+channels:
+- conda-forge
+- bioconda
+dependencies:
+- python=3.6
+- matplotlib=3.0.3
+- snakemake=4.4.0
+- click=6.7
+- toml=0.9.4
+- pip:
+    - pyabc==0.9.10
