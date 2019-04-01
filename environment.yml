@@ -7,5 +7,6 @@ dependencies:
 - snakemake=4.4.0
 - click=6.7
 - toml=0.9.4
+- jupyter=1.0.0
 - pip:
     - pyabc==0.9.10
