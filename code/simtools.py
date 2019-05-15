@@ -1,0 +1,120 @@
+"""
+Shared tools for simulation
+"""
+
+
+import numpy as np
+from scipy.integrate import simps
+
+
+def amax(lst):
+    """
+    return max value by deviation from 0
+
+    :param lst iterable: list of values to find max in
+    :returns: max value by deviation from 0
+    """
+    return max([abs(x) for x in lst])
+
+
+def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points):
+    """
+    Simulate evolution of parameter probability density with PDE formulation.
+
+    :param f_initial f(x): density function of initial density (integral 1)
+    :param f_rate f(x): rate function
+    :param f_noise f(x): density function of noise (integral 1)
+    :param t_end float:
+    :param t_points int: time resolution (total samples)
+    :param x_view (float, float): range of parameter values in return density array
+    :param x_points int: parameter resolution (total samples)
+    :returns: (time axis [np array], parameter axis [np array], density over time [2d np array])
+    """
+
+    def lr(x):
+        # utility function for 'lenght' of (start, end) tuple
+        return x[1] - x[0]
+
+    # simulate for a wider range of x to avoid edge effects
+    # symmetry around 0 is required for convolution
+    x_range = (-amax(x_view)*2, amax(x_view)*2)
+    t_range = (0, t_end)
+
+    h = lr(x_range)/x_points
+    k = lr(t_range)/t_points
+
+    x_points_full = int(x_points*lr(x_range)/lr(x_view))
+
+    x = np.linspace(x_range[0], x_range[1], x_points_full)
+    t = np.linspace(t_range[0], t_range[1], t_points)
+
+    mesh = np.zeros((x_points_full, t_points))
+
+    # setup initial parameters
+    mesh[:, 0] = f_initial(x)
+    mesh[:, 0] /= simps(mesh[:, 0], x=x) # normalize
+
+    rate = f_rate(x)
+    noise = f_noise(x)
+
+    # solve
+    for i in range(1, t_points):
+        dxh = np.convolve(rate*mesh[:, i-1],
+                          noise, mode='same') / (x_points/lr(x_range)) - \
+                          mesh[:, i-1] * simps(rate*mesh[:, i-1], x=x)
+        xh = mesh[:, i-1] + dxh*k/2
+        dx = np.convolve(rate*xh, noise, mode='same') / (x_points/lr(x_range)) - \
+                         xh * simps(rate*xh, x=x)
+        mesh[:, i] = mesh[:, i-1] + dx*k
+
+        # normalize to integral 1 (probability density)
+        # is this neccessary? should it be here?
+        mesh[:, i] /= simps(mesh[:, i], x=x)
+
+    # return relevant section of mesh
+    x_ix0 = int((x_view[0] - x_range[0])/lr(x_range) * x_points_full)
+    x_ix1 = int((x_view[1] - x_range[1])/lr(x_range) * x_points_full)
+
+    assert x_points_full + x_ix1 - x_ix0 == x_points
+
+    return t, x[x_ix0:x_ix1], mesh[x_ix0:x_ix1, :]
+
+
+def get_stationary_distribution(f_rate, f_noise, x_view, x_points, iters=100):
+    """
+    Get the stationary distribution with a particular rate and noise function.
+
+    :param f_rate f(x): rate function
+    :param f_noise f(x): density function of noise (integral 1)
+    :param x_view (float, float): range of parameter values in return density array
+    :param x_points int: parameter resolution (total samples)
+    :returns: (parameter axis [np array], probability density [np array])
+    """
+
+    def lr(x):
+        # utility function for 'lenght' of (start, end) tuple
+        return x[1] - x[0]
+
+    x_range = (-amax(x_view)*2, amax(x_view)*2)
+    x_points_full = int(x_points*lr(x_range)/lr(x_view))
+    x = np.linspace(x_range[0], x_range[1], x_points_full)
+
+    noise = f_noise(x)
+
+    # We can start the iteration from any distribution
+    stationary = np.ones(x.size)
+
+    for __ in range(iters):
+        stationary = stationary*f_rate(x)
+        stationary = np.convolve(stationary, noise, mode='same')
+        stationary /= simps(stationary, x=x)
+
+    x_ix0 = int((x_view[0] - x_range[0])/lr(x_range) * x_points_full)
+    x_ix1 = int((x_view[1] - x_range[1])/lr(x_range) * x_points_full)
+
+    print(x_ix0, x_ix1, x_points, x_points_full)
+    print(int(x_points_full + x_ix1 - x_ix0))
+
+    assert x_points_full + x_ix1 - x_ix0 == x_points
+
+    return x[x_ix0:x_ix1], stationary[x_ix0:x_ix1]
