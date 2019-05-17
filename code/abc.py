@@ -11,6 +11,7 @@ import numpy as np
 from pyabc import (ABCSMC, Distribution, RV)
 from pyabc.populationstrategy import AdaptivePopulationSize
 from scipy.interpolate import PchipInterpolator as pchip
+import toml
 
 import simtools
 
@@ -21,6 +22,9 @@ class Observation:
     """
     def __init__(self):
         pass
+
+    def __str__(self):
+        return str(self.obs)
 
     def parse_observations(self, obsfile_up, obsfile_down):
         """
@@ -39,24 +43,24 @@ class Observation:
         with open(obsfile_up, 'r') as obs_up:
             rdr = csv.DictReader(obs_up)
             for line in rdr:
-                self.obs['up']['t'].append(line['time'])
-                self.obs['up']['x'].append(line['param'])
-                self.obs['up']['s'].append(line['stdev'])
+                self.obs['up']['t'].append(float(line['time']))
+                self.obs['up']['x'].append(float(line['param']))
+                self.obs['up']['s'].append(float(line['stdev']))
         with open(obsfile_down, 'r') as obs_down:
             rdr = csv.DictReader(obs_down)
             for line in rdr:
-                self.obs['down']['t'].append(line['time'])
-                self.obs['down']['x'].append(line['param'])
-                self.obs['down']['s'].append(line['stdev'])
+                self.obs['down']['t'].append(float(line['time']))
+                self.obs['down']['x'].append(float(line['param']))
+                self.obs['down']['s'].append(float(line['stdev']))
 
         self.interpolators = {
             'up': {
                 'x': pchip(self.obs['up']['t'], self.obs['up']['x'], extrapolate=True),
-                's': pchip(self.obs['up']['s'], self.obs['up']['s'], extrapolate=True)
+                's': pchip(self.obs['up']['t'], self.obs['up']['s'], extrapolate=True)
             },
             'down': {
                 'x': pchip(self.obs['down']['t'], self.obs['down']['x'], extrapolate=True),
-                's': pchip(self.obs['down']['s'], self.obs['down']['s'], extrapolate=True)
+                's': pchip(self.obs['down']['t'], self.obs['down']['s'], extrapolate=True)
             }
         }
 
@@ -69,7 +73,7 @@ class Observation:
         :returns: {'up': [up example]}
         """
 
-        instance = {}
+        instance = {'up': {}, 'down': {}}
 
         for time, obs_set in zip([time_up, time_down], ['up', 'down']):
             obs_t = np.array(self.obs[obs_set]['t'])
@@ -77,12 +81,12 @@ class Observation:
             obs_x = np.array(self.obs[obs_set]['x'])
             # are we outside observations?
             # if so, add data to improve interpolation and warn user
-            if time[0] < t[0]:
+            if time[0] < obs_t[0]:
                 print('Warning: requesting observation interpolation outside observations')
                 obs_t = np.insert(obs_t, 0, time[0])
                 obs_x = np.insert(obs_x, 0, obs_x[0])
                 obs_s = np.insert(obs_s, 0, obs_s[0])
-            if time[0] > t[0]:
+            if time[0] > obs_t[0]:
                 print('Warning: requesting observation interpolation outside observations')
                 obs_t = np.append(obs_t, time[0])
                 obs_x = np.append(obs_x, obs_x[0])
@@ -94,8 +98,8 @@ class Observation:
         return instance
 
 
-def interpolate_observation(time, obs):
-    pass
+OBS = Observation()
+PARAMS = {}
 
 
 def abc_model(params):
@@ -103,7 +107,19 @@ def abc_model(params):
 
 
 def abc_distance(obs1, obs2):
-    pass
+    """
+    Weighted rmsd between two dataset.
+    """
+
+    # Identify PDE data which has s=0 by definition
+    if np.any(obs1['s']):
+        pde = obs2
+        obs = obs1
+    else:
+        pde = obs1
+        obs = obs2
+
+    return np.sum((pde['x'] - obs['x'])**2 * obs['s'])
 
 
 def abc_setup():
@@ -119,10 +135,22 @@ def main():
 
 
 @main.command()
+@click.option('-p', '--paramfile', type=click.Path())
 @click.option('-u', '--obsfile-up', type=click.Path())
 @click.option('-d', '--obsfile-down', type=click.Path())
-def parametrize(obsfile_up, obsfile_down):
-    pass
+def parametrize(paramfile, obsfile_up, obsfile_down):
+
+    OBS.parse_observations(obsfile_up, obsfile_down)
+    print('Observation:', OBS)
+
+    PARAMS = toml.load(paramfile)
+    print('Simulation parameters:', PARAMS)
+
+    observation = OBS.get_instance(
+        simtools.get_time_axis(PARAMS['time_end_up'], PARAMS['time_points_up']),
+        simtools.get_time_axis(PARAMS['time_end_down'], PARAMS['time_points_down']))
+
+    print(observation)
 
 
 if __name__ == '__main__':

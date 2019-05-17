@@ -1,0 +1,9 @@
+time_points_up = 1000
+time_points_down = 1000
+time_end_up = 10
+time_end_down = 10
+parameter_points = 1000
+parameter_range = [-2, 3]
+noise_sigma = 0.1
+optimum_normal = 0.0
+optimum_treatment = 1.0

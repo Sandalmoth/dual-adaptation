@@ -5,6 +5,7 @@ Shared tools for simulation
 
 import numpy as np
 from scipy.integrate import simps
+from scipy.interpolate import interp1d
 
 
 def amax(lst):
@@ -15,6 +16,11 @@ def amax(lst):
     :returns: max value by deviation from 0
     """
     return max([abs(x) for x in lst])
+
+
+def get_time_axis(t_end, t_points):
+    t_range = (0, t_end)
+    return np.linspace(t_range[0], t_range[1], t_points)
 
 
 def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points):
@@ -46,7 +52,7 @@ def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points):
     x_points_full = int(x_points*lr(x_range)/lr(x_view))
 
     x = np.linspace(x_range[0], x_range[1], x_points_full)
-    t = np.linspace(t_range[0], t_range[1], t_points)
+    t = get_time_axis(t_end, t_points)
 
     mesh = np.zeros((x_points_full, t_points))
 
@@ -118,3 +124,9 @@ def get_stationary_distribution(f_rate, f_noise, x_view, x_points, iters=100):
     assert x_points_full + x_ix1 - x_ix0 == x_points
 
     return x[x_ix0:x_ix1], stationary[x_ix0:x_ix1]
+
+
+def get_stationary_distribution_function(f_rate, f_noise, x_view, x_points, iters=100):
+    extended_view = [x*2 for x in x_view]
+    x, y = get_stationary_distribution(f_rate, f_noise, extended_view, x_points, iters=iters)
+    return interp1d(x, y, kind='cubic', bouds_error=False, fill_value=0.0)
