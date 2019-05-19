@@ -16,6 +16,44 @@ import toml
 import simtools
 
 
+class Rate:
+    def __init__(self, s, c, w, u, m):
+        """
+        :param s float: shape parameter in R
+        :param c float: center parameter in (0, 1)
+        :param w float: width between function ends in R
+        :param u float: mode of function in R
+        :param m float: function maximum in in R > 0
+        """
+        self.u = u
+        self.w = w
+        self.m = m
+        self.c = c
+        self.a = s*c
+        self.b = s - self.a
+        self.factor = self.a**self.a * self.b**self.b * (self.a + self.b)**(-self.a - self.b)
+
+    def __call__(self, x):
+        print(self.w, self.u, self.a, self.b, self.factor, self.m)
+        y = (x*self.w - self.u + self.c)**self.a * (1 - (x*self.w - self.u + self.c))**self.b
+        # print(y)
+        print(self.u - self.c)
+        print(1 - self.c + self.u)
+        y = self.m * y / self.factor
+        y[x <= self.u - self.c] = 0
+        y[x >= 1 - self.c + self.u] = 0
+        return y
+
+
+def rate(x):
+    tmp = np.maximum((x - RATE_MU + BEST_X)**ALPHA*(1 - (x - RATE_MU + BEST_X))**BETA, 0) \
+          / (ALPHA**ALPHA*BETA**BETA*(ALPHA + BETA)**(-ALPHA - BETA)) \
+          * MAX_RATE
+    tmp[x <= -BEST_X + RATE_MU] = 0
+    tmp[x >= 1 - BEST_X + RATE_MU] = 0
+    return tmp
+
+
 class Observation:
     """
     A stochastic process that describes an observation
@@ -119,10 +157,10 @@ def abc_distance(obs1, obs2):
         pde = obs1
         obs = obs2
 
-    return np.sum((pde['x'] - obs['x'])**2 * obs['s'])
+    return np.sum((pde['x'] - obs['x'])**2 / obs['s'])
 
 
-def abc_setup():
+def abc_setup(observation):
     pass
 
 
@@ -138,7 +176,8 @@ def main():
 @click.option('-p', '--paramfile', type=click.Path())
 @click.option('-u', '--obsfile-up', type=click.Path())
 @click.option('-d', '--obsfile-down', type=click.Path())
-def parametrize(paramfile, obsfile_up, obsfile_down):
+@click.option('-b', '--dbfile', type=click.Path())
+def parametrize(paramfile, obsfile_up, obsfile_down, dbfile):
 
     OBS.parse_observations(obsfile_up, obsfile_down)
     print('Observation:', OBS)
@@ -150,7 +189,26 @@ def parametrize(paramfile, obsfile_up, obsfile_down):
         simtools.get_time_axis(PARAMS['time_end_up'], PARAMS['time_points_up']),
         simtools.get_time_axis(PARAMS['time_end_down'], PARAMS['time_points_down']))
 
-    print(observation)
+    abc = abc_setup(observation)
+    db_path = 'sqlite:///' + dbfile
+    print('Saving database in:', db_path)
+
+    # print('Constructing ABC')
+    # abc.new(db_path, observed)
+    # print('Running ABC')
+    # abc.run(minimum_epsilon=min_epsilon,
+    #         max_nr_populations=max_populations,
+    #         min_acceptance_rate=min_acceptance)
+
+    # def __init__(self, s, c, w, u, m):
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots()
+    x = np.linspace(-4, 4, 1000)
+    rf = Rate(10, 0.2, 1, 0, 1)
+    y = rf(x)
+    axs.plot(x, y)
+    plt.show()
+
 
 
 if __name__ == '__main__':
