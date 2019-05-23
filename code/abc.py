@@ -141,6 +141,9 @@ PARAMS = {}
 
 
 def abc_model(params):
+    """
+    Model for abc computation
+    """
     pass
 
 
@@ -149,19 +152,37 @@ def abc_distance(obs1, obs2):
     Weighted rmsd between two dataset.
     """
 
+    total = 0
+
     # Identify PDE data which has s=0 by definition
-    if np.any(obs1['s']):
-        pde = obs2
-        obs = obs1
-    else:
-        pde = obs1
-        obs = obs2
+    for obs_set in ['up', 'down']:
+        if np.any(obs1['s']):
+            pde[obs_set] = obs2
+            obs[obs_set] = obs1
+        else:
+            pde[obs_set] = obs1
+            obs[obs_set] = obs2
 
-    return np.sum((pde['x'] - obs['x'])**2 / obs['s'])
+        total += np.sum((pde['x'] - obs['x'])**2 * obs['s'])
+
+    return total
 
 
-def abc_setup(observation):
-    pass
+def abc_setup():
+    """
+    Create abc model
+    """
+
+    abc_prior_dict = {
+        'a': RV("uniform", 0, 100),
+        'b': RV("uniform", 0, 100),
+        'w': RV("uniform", 0, 10)
+    }
+
+    abc = ABCSMC(abc_model, abc_prior_dict, abc_distance,
+                 population_size=AdaptivePopulationSize(500, 0.15))
+
+    return abc
 
 
 @click.group()
@@ -209,6 +230,10 @@ def parametrize(paramfile, obsfile_up, obsfile_down, dbfile):
     axs.plot(x, y)
     plt.show()
 
+
+    abc = abc_setup()
+    db_path = 'sqlite:///' + dbfile
+    print('Saving database in:', db_path, file=sys.stderr)
 
 
 if __name__ == '__main__':
