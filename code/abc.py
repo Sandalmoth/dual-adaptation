@@ -35,23 +35,20 @@ class Rate:
 
     def __call__(self, x):
         print(self.w, self.u, self.a, self.b, self.factor, self.m)
-        y = (x*self.w - self.u + self.c)**self.a * (1 - (x*self.w - self.u + self.c))**self.b
-        # print(y)
-        print(self.u - self.c)
-        print(1 - self.c + self.u)
+        y = (x/self.w - self.u/self.w + self.c)**self.a * (1 - (x/self.w - self.u/self.w + self.c))**self.b
         y = self.m * y / self.factor
-        y[x <= self.u - self.c] = 0
-        y[x >= 1 - self.c + self.u] = 0
+        y[x <= self.u - self.c*self.w] = 0
+        y[x >= self.u - (self.c - 1)*self.w] = 0
         return y
 
 
-def rate(x):
-    tmp = np.maximum((x - RATE_MU + BEST_X)**ALPHA*(1 - (x - RATE_MU + BEST_X))**BETA, 0) \
-          / (ALPHA**ALPHA*BETA**BETA*(ALPHA + BETA)**(-ALPHA - BETA)) \
-          * MAX_RATE
-    tmp[x <= -BEST_X + RATE_MU] = 0
-    tmp[x >= 1 - BEST_X + RATE_MU] = 0
-    return tmp
+# def rate(x):
+#     tmp = np.maximum((x - RATE_MU + BEST_X)**ALPHA*(1 - (x - RATE_MU + BEST_X))**BETA, 0) \
+#           / (ALPHA**ALPHA*BETA**BETA*(ALPHA + BETA)**(-ALPHA - BETA)) \
+#           * MAX_RATE
+#     tmp[x <= -BEST_X + RATE_MU] = 0
+#     tmp[x >= 1 - BEST_X + RATE_MU] = 0
+#     return tmp
 
 
 class Observation:
@@ -154,6 +151,9 @@ def abc_distance(obs1, obs2):
 
     total = 0
 
+    obs = {}
+    pde = {}
+
     # Identify PDE data which has s=0 by definition
     for obs_set in ['up', 'down']:
         if np.any(obs1['s']):
@@ -210,7 +210,6 @@ def parametrize(paramfile, obsfile_up, obsfile_down, dbfile):
         simtools.get_time_axis(PARAMS['time_end_up'], PARAMS['time_points_up']),
         simtools.get_time_axis(PARAMS['time_end_down'], PARAMS['time_points_down']))
 
-    abc = abc_setup(observation)
     db_path = 'sqlite:///' + dbfile
     print('Saving database in:', db_path)
 
@@ -228,12 +227,18 @@ def parametrize(paramfile, obsfile_up, obsfile_down, dbfile):
     rf = Rate(10, 0.2, 1, 0, 1)
     y = rf(x)
     axs.plot(x, y)
+    rf = Rate(1, 0.5, 2, 0.5, 1.1)
+    y = rf(x)
+    axs.plot(x, y)
+    rf = Rate(0.1, 0.6, 3, -0.5, 1.2)
+    y = rf(x)
+    axs.plot(x, y)
     plt.show()
 
 
     abc = abc_setup()
     db_path = 'sqlite:///' + dbfile
-    print('Saving database in:', db_path, file=sys.stderr)
+    print('Saving database in:', db_path)
 
 
 if __name__ == '__main__':
