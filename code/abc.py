@@ -42,13 +42,17 @@ class Rate:
         return y
 
 
-# def rate(x):
-#     tmp = np.maximum((x - RATE_MU + BEST_X)**ALPHA*(1 - (x - RATE_MU + BEST_X))**BETA, 0) \
-#           / (ALPHA**ALPHA*BETA**BETA*(ALPHA + BETA)**(-ALPHA - BETA)) \
-#           * MAX_RATE
-#     tmp[x <= -BEST_X + RATE_MU] = 0
-#     tmp[x >= 1 - BEST_X + RATE_MU] = 0
-#     return tmp
+class Noise:
+    def __init__(self, s):
+        """
+        :param s float: standard deviation of normal distribution
+        """
+        self.s = s
+
+    def __call__(self, x):
+        return 1/np.sqrt(2*np.pi*self.s**2) * \
+               np.exp(-x**2/(2*self.s**2))
+
 
 
 class Observation:
@@ -141,7 +145,59 @@ def abc_model(params):
     """
     Model for abc computation
     """
-    pass
+    # Simulation proceeds as follows:
+    # 1. Find the initial distribution given a certain rate function
+    # 2. Simulate rise of parameter with pde
+    # 3. Find stationary distribution after rise
+    # 4. Simulate decay with pde
+
+    print(params)
+    sim = {}
+    f_noise = Noise(params['n'])
+    f_rate_up = Rate(params['s'], params['c'], params['w'],
+                     PARAMS['optimum_treatment'], 1)
+    f_rate_down = Rate(params['s'], params['c'], params['w'],
+                       PARAMS['optimum_normal'], 1)
+
+    f_initial = simtools.get_stationary_distribution_function(
+        f_rate_down,
+        f_noise,
+        PARAMS['parameter_range'],
+        PARAMS['parameter_points']
+    )
+
+    time_axis, parameter_axis, parameters = simtools.simulate_pde(
+        f_initial,
+        f_rate_up,
+        f_noise,
+        PARAMS['time_range_up'][1],
+        PARAMS['time_points_up'],
+        PARAMS['parameter_range'],
+        PARAMS['parameter_points']
+    )
+
+    sim['up'] = np.mean(parameters, axis=1)
+
+    f_initial = simtools.get_stationary_distribution_function(
+        f_rate_up,
+        f_noise,
+        PARAMS['parameter_range'],
+        PARAMS['parameter_points']
+    )
+
+    time_axis, parameter_axis, parameters = simtools.simulate_pde(
+        f_initial,
+        f_rate_down,
+        f_noise,
+        PARAMS['time_range_up'][1],
+        PARAMS['time_points_up'],
+        PARAMS['parameter_range'],
+        PARAMS['parameter_points']
+    )
+
+    sim['down'] = np.mean(parameters, axis=1)
+
+    return sim
 
 
 def abc_distance(obs1, obs2):
@@ -163,7 +219,7 @@ def abc_distance(obs1, obs2):
             pde[obs_set] = obs1
             obs[obs_set] = obs2
 
-        total += np.sum((pde['x'] - obs['x'])**2 * obs['s'])
+        total += np.sum((pde['x'] - obs['x'])**2 / obs['s'])
 
     return total
 
@@ -174,9 +230,10 @@ def abc_setup():
     """
 
     abc_prior_dict = {
-        'a': RV("uniform", 0, 100),
-        'b': RV("uniform", 0, 100),
-        'w': RV("uniform", 0, 10)
+        's': RV("uniform", 0, 100),
+        'c': RV("uniform", 0, 1),
+        'w': RV("uniform", 0, 10),
+        'n': RV("uniform", 0, 10)
     }
 
     abc = ABCSMC(abc_model, abc_prior_dict, abc_distance,
@@ -207,39 +264,19 @@ def parametrize(paramfile, obsfile_up, obsfile_down, dbfile):
     print('Simulation parameters:', PARAMS)
 
     observation = OBS.get_instance(
-        simtools.get_time_axis(PARAMS['time_end_up'], PARAMS['time_points_up']),
-        simtools.get_time_axis(PARAMS['time_end_down'], PARAMS['time_points_down']))
-
-    db_path = 'sqlite:///' + dbfile
-    print('Saving database in:', db_path)
-
-    # print('Constructing ABC')
-    # abc.new(db_path, observed)
-    # print('Running ABC')
-    # abc.run(minimum_epsilon=min_epsilon,
-    #         max_nr_populations=max_populations,
-    #         min_acceptance_rate=min_acceptance)
-
-    # def __init__(self, s, c, w, u, m):
-    import matplotlib.pyplot as plt
-    fig, axs = plt.subplots()
-    x = np.linspace(-4, 4, 1000)
-    rf = Rate(10, 0.2, 1, 0, 1)
-    y = rf(x)
-    axs.plot(x, y)
-    rf = Rate(1, 0.5, 2, 0.5, 1.1)
-    y = rf(x)
-    axs.plot(x, y)
-    rf = Rate(0.1, 0.6, 3, -0.5, 1.2)
-    y = rf(x)
-    axs.plot(x, y)
-    plt.show()
-
+        simtools.get_time_axis(PARAMS['time_range_up'][1], PARAMS['time_points_up']),
+        simtools.get_time_axis(PARAMS['time_range_down'][1], PARAMS['time_points_down']))
 
     abc = abc_setup()
     db_path = 'sqlite:///' + dbfile
     print('Saving database in:', db_path)
 
+    print('Constructing ABC')
+    abc.new(db_path, observation)
+    print('Running ABC')
+    abc.run(minimum_epsilon=PARAMS['abc_min_epsilon'],
+            max_nr_populations=PARAMS['abc_max_populations'],
+            min_acceptance_rate=PARAMS['abc_min_acceptance'])
 
 if __name__ == '__main__':
     main()
