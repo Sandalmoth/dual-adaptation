@@ -10,6 +10,7 @@ import click
 import numpy as np
 from pyabc import (ABCSMC, Distribution, RV)
 from pyabc.populationstrategy import AdaptivePopulationSize
+from pyabc.sampler import MulticoreEvalParallelSampler
 from scipy.interpolate import PchipInterpolator as pchip
 import toml
 
@@ -233,7 +234,8 @@ def abc_setup():
     abc_priors = Distribution(abc_prior_dict)
 
     abc = ABCSMC(abc_model, abc_priors, abc_distance,
-                 population_size=AdaptivePopulationSize(500, 0.15))
+                 population_size=AdaptivePopulationSize(500, 0.15),
+                 sampler=MulticoreEvalParallelSampler(simtools.PARAMS['abc_parallel_simulations']))
 
     return abc
 

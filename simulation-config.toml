@@ -10,3 +10,4 @@ optimum_treatment = 1.0
 abc_min_epsilon = 0.1
 abc_max_populations = 15
 abc_min_acceptance = 0.0
+abc_parallel_simulations = 2
