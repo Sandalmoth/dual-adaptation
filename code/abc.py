@@ -34,7 +34,6 @@ class Rate:
         self.factor = self.a**self.a * self.b**self.b * (self.a + self.b)**(-self.a - self.b)
 
     def __call__(self, x):
-        print(self.w, self.u, self.a, self.b, self.factor, self.m)
         y = (x/self.w - self.u/self.w + self.c)**self.a * (1 - (x/self.w - self.u/self.w + self.c))**self.b
         y = self.m * y / self.factor
         y[x <= self.u - self.c*self.w] = 0
@@ -112,7 +111,7 @@ class Observation:
         :returns: {'up': [up example]}
         """
 
-        instance = {'up': {}, 'down': {}}
+        instance = {}
 
         for time, obs_set in zip([time_up, time_down], ['up', 'down']):
             obs_t = np.array(self.obs[obs_set]['t'])
@@ -131,14 +130,10 @@ class Observation:
                 obs_x = np.append(obs_x, obs_x[0])
                 obs_s = np.append(obs_s, obs_s[0])
 
-            instance[obs_set]['x'] = self.interpolators[obs_set]['x'](time)
-            instance[obs_set]['s'] = self.interpolators[obs_set]['s'](time)
+            instance['x_' + obs_set] = self.interpolators[obs_set]['x'](time)
+            instance['s_' + obs_set] = self.interpolators[obs_set]['s'](time)
 
         return instance
-
-
-OBS = Observation()
-PARAMS = {}
 
 
 def abc_model(params):
@@ -151,29 +146,28 @@ def abc_model(params):
     # 3. Find stationary distribution after rise
     # 4. Simulate decay with pde
 
-    print(params)
     sim = {}
     f_noise = Noise(params['n'])
     f_rate_up = Rate(params['s'], params['c'], params['w'],
-                     PARAMS['optimum_treatment'], 1)
+                     simtools.PARAMS['optimum_treatment'], 1)
     f_rate_down = Rate(params['s'], params['c'], params['w'],
-                       PARAMS['optimum_normal'], 1)
+                       simtools.PARAMS['optimum_normal'], 1)
 
     f_initial = simtools.get_stationary_distribution_function(
         f_rate_down,
         f_noise,
-        PARAMS['parameter_range'],
-        PARAMS['parameter_points']
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
     )
 
     time_axis, parameter_axis, parameters = simtools.simulate_pde(
         f_initial,
         f_rate_up,
         f_noise,
-        PARAMS['time_range_up'][1],
-        PARAMS['time_points_up'],
-        PARAMS['parameter_range'],
-        PARAMS['parameter_points']
+        simtools.PARAMS['time_range_up'][1],
+        simtools.PARAMS['time_points_up'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
     )
 
     sim['up'] = np.mean(parameters, axis=1)
@@ -181,23 +175,23 @@ def abc_model(params):
     f_initial = simtools.get_stationary_distribution_function(
         f_rate_up,
         f_noise,
-        PARAMS['parameter_range'],
-        PARAMS['parameter_points']
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
     )
 
     time_axis, parameter_axis, parameters = simtools.simulate_pde(
         f_initial,
         f_rate_down,
         f_noise,
-        PARAMS['time_range_up'][1],
-        PARAMS['time_points_up'],
-        PARAMS['parameter_range'],
-        PARAMS['parameter_points']
+        simtools.PARAMS['time_range_up'][1],
+        simtools.PARAMS['time_points_up'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
     )
 
     sim['down'] = np.mean(parameters, axis=1)
 
-    return sim
+    return si
 
 
 def abc_distance(obs1, obs2):
@@ -236,7 +230,9 @@ def abc_setup():
         'n': RV("uniform", 0, 10)
     }
 
-    abc = ABCSMC(abc_model, abc_prior_dict, abc_distance,
+    abc_priors = Distribution(abc_prior_dict)
+
+    abc = ABCSMC(abc_model, abc_priors, abc_distance,
                  population_size=AdaptivePopulationSize(500, 0.15))
 
     return abc
@@ -257,15 +253,19 @@ def main():
 @click.option('-b', '--dbfile', type=click.Path())
 def parametrize(paramfile, obsfile_up, obsfile_down, dbfile):
 
-    OBS.parse_observations(obsfile_up, obsfile_down)
-    print('Observation:', OBS)
+    np.set_printoptions(threshold=10)
 
-    PARAMS = toml.load(paramfile)
-    print('Simulation parameters:', PARAMS)
+    simtools.PARAMS = toml.load(paramfile)
+    print('Simulation parameters:', simtools.PARAMS)
 
-    observation = OBS.get_instance(
-        simtools.get_time_axis(PARAMS['time_range_up'][1], PARAMS['time_points_up']),
-        simtools.get_time_axis(PARAMS['time_range_down'][1], PARAMS['time_points_down']))
+    observation = Observation()
+    observation.parse_observations(obsfile_up, obsfile_down)
+    print('Observation:', observation)
+
+    observation = observation.get_instance(
+        simtools.get_time_axis(simtools.PARAMS['time_range_up'][1], simtools.PARAMS['time_points_up']),
+        simtools.get_time_axis(simtools.PARAMS['time_range_down'][1], simtools.PARAMS['time_points_down']))
+    print('Observation instance:', observation)
 
     abc = abc_setup()
     db_path = 'sqlite:///' + dbfile
@@ -274,9 +274,9 @@ def parametrize(paramfile, obsfile_up, obsfile_down, dbfile):
     print('Constructing ABC')
     abc.new(db_path, observation)
     print('Running ABC')
-    abc.run(minimum_epsilon=PARAMS['abc_min_epsilon'],
-            max_nr_populations=PARAMS['abc_max_populations'],
-            min_acceptance_rate=PARAMS['abc_min_acceptance'])
+    abc.run(minimum_epsilon=simtools.PARAMS['abc_min_epsilon'],
+            max_nr_populations=simtools.PARAMS['abc_max_populations'],
+            min_acceptance_rate=simtools.PARAMS['abc_min_acceptance'])
 
 if __name__ == '__main__':
     main()

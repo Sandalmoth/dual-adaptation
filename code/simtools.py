@@ -8,6 +8,11 @@ from scipy.integrate import simps
 from scipy.interpolate import interp1d
 
 
+# Needs to be in global scope here rather than in abc.py
+# or it would not be accessible by abc_model()
+PARAMS = {}
+
+
 def amax(lst):
     """
     return max value by deviation from 0
@@ -118,9 +123,6 @@ def get_stationary_distribution(f_rate, f_noise, x_view, x_points, iters=100):
     x_ix0 = int((x_view[0] - x_range[0])/lr(x_range) * x_points_full)
     x_ix1 = int((x_view[1] - x_range[1])/lr(x_range) * x_points_full)
 
-    print(x_ix0, x_ix1, x_points, x_points_full)
-    print(int(x_points_full + x_ix1 - x_ix0))
-
     assert x_points_full + x_ix1 - x_ix0 == x_points
 
     return x[x_ix0:x_ix1], stationary[x_ix0:x_ix1]
@@ -129,4 +131,4 @@ def get_stationary_distribution(f_rate, f_noise, x_view, x_points, iters=100):
 def get_stationary_distribution_function(f_rate, f_noise, x_view, x_points, iters=100):
     extended_view = [x*2 for x in x_view]
     x, y = get_stationary_distribution(f_rate, f_noise, extended_view, x_points, iters=iters)
-    return interp1d(x, y, kind='cubic', bouds_error=False, fill_value=0.0)
+    return interp1d(x, y, kind='cubic', bounds_error=False, fill_value=0.0)
