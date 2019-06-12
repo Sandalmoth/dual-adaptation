@@ -5,6 +5,7 @@ given a hypothetical experiment timeline.
 
 
 import csv
+import time
 
 import click
 import numpy as np
@@ -192,7 +193,7 @@ def abc_model(params):
 
     sim['down'] = np.mean(parameters, axis=1)
 
-    return si
+    return sim
 
 
 def abc_distance(obs1, obs2):
@@ -234,7 +235,7 @@ def abc_setup():
     abc_priors = Distribution(abc_prior_dict)
 
     abc = ABCSMC(abc_model, abc_priors, abc_distance,
-                 population_size=AdaptivePopulationSize(500, 0.15),
+                 population_size=AdaptivePopulationSize(10, 0.15),
                  sampler=MulticoreEvalParallelSampler(simtools.PARAMS['abc_parallel_simulations']))
 
     return abc
