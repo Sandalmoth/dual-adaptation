@@ -172,7 +172,8 @@ def abc_model(params):
         simtools.PARAMS['parameter_points']
     )
 
-    sim['up'] = np.mean(parameters, axis=1)
+    sim['x_up'] = np.mean(parameters, axis=1)
+    sim['s_up'] = np.zeros(sim['x_up'].size)
 
     f_initial = simtools.get_stationary_distribution_function(
         f_rate_up,
@@ -191,7 +192,10 @@ def abc_model(params):
         simtools.PARAMS['parameter_points']
     )
 
-    sim['down'] = np.mean(parameters, axis=1)
+    sim['x_down'] = np.mean(parameters, axis=1)
+    sim['s_down'] = np.zeros(sim['x_up'].size)
+
+    print(sim)
 
     return sim
 
@@ -201,19 +205,27 @@ def abc_distance(obs1, obs2):
     Weighted rmsd between two dataset.
     """
 
-    total = 0
+    print(obs1)
+    print(obs2)
 
-    obs = {}
-    pde = {}
+    total = 0
 
     # Identify PDE data which has s=0 by definition
     for obs_set in ['up', 'down']:
-        if np.any(obs1['s']):
-            pde[obs_set] = obs2
-            obs[obs_set] = obs1
+
+        obs = {'up': {}, 'down': {}}
+        pde = {'up': {}, 'down': {}}
+
+        if np.any(obs1['s_up']):
+            pde['x'] = obs2['x_' + obs_set]
+            # pde['s'] = obs2['s_' + obs_set]
+            obs['x'] = obs1['x_' + obs_set]
+            obs['s'] = obs1['s_' + obs_set]
         else:
-            pde[obs_set] = obs1
-            obs[obs_set] = obs2
+            pde['x'] = obs1['x_' + obs_set]
+            # pde['s'] = obs2['s_' + obs_set]
+            obs['x'] = obs2['x_' + obs_set]
+            obs['s'] = obs2['s_' + obs_set]
 
         total += np.sum((pde['x'] - obs['x'])**2 / obs['s'])
 
