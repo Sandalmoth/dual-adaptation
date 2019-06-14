@@ -238,10 +238,10 @@ def abc_setup():
     """
 
     abc_prior_dict = {
-        's': RV("uniform", 0, 100),
-        'c': RV("uniform", 0, 1),
-        'w': RV("uniform", 0, 10),
-        'n': RV("uniform", 0, 10)
+        's': RV("uniform", 0, 50),
+        'c': RV("uniform", 0.1, 0.9),
+        'w': RV("uniform", 0.1, 5),
+        'n': RV("uniform", 0.01, 5)
     }
 
     abc_priors = Distribution(abc_prior_dict)
