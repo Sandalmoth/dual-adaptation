@@ -1,0 +1,9 @@
+data
+code/bin
+intermediate
+scratch
+logs
+results
+.snakemake
+notebooks/.ipynb_checkpoints
+code/__pycache__
