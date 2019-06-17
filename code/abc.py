@@ -55,7 +55,6 @@ class Noise:
                np.exp(-x**2/(2*self.s**2))
 
 
-
 class Observation:
     """
     A stochastic process that describes an observation
@@ -186,8 +185,8 @@ def abc_model(params):
         f_initial,
         f_rate_down,
         f_noise,
-        simtools.PARAMS['time_range_up'][1],
-        simtools.PARAMS['time_points_up'],
+        simtools.PARAMS['time_range_down'][1],
+        simtools.PARAMS['time_points_down'],
         simtools.PARAMS['parameter_range'],
         simtools.PARAMS['parameter_points']
     )
