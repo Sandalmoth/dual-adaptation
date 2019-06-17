@@ -153,6 +153,8 @@ def abc_model(params):
                      simtools.PARAMS['optimum_treatment'], 1)
     f_rate_down = Rate(params['s'], params['c'], params['w'],
                        simtools.PARAMS['optimum_normal'], 1)
+    parameter_range = simtools.PARAMS['parameter_range'][1] - \
+                      simtools.PARAMS['parameter_range'][0]
 
     f_initial = simtools.get_stationary_distribution_function(
         f_rate_down,
@@ -171,7 +173,11 @@ def abc_model(params):
         simtools.PARAMS['parameter_points']
     )
 
-    sim['x_up'] = np.mean(parameters, axis=1)
+    sim['x_up'] = np.array(
+        [np.sum(parameters[:, i]*parameter_axis) / \
+         parameter_axis.size*parameter_range \
+         for i in range(parameters.shape[1])]
+    )
     sim['s_up'] = np.zeros(sim['x_up'].size)
 
     f_initial = simtools.get_stationary_distribution_function(
@@ -191,7 +197,11 @@ def abc_model(params):
         simtools.PARAMS['parameter_points']
     )
 
-    sim['x_down'] = np.mean(parameters, axis=1)
+    sim['x_down'] = np.array(
+        [np.sum(parameters[:, i]*parameter_axis) / \
+         parameter_axis.size*parameter_range \
+         for i in range(parameters.shape[1])]
+    )
     sim['s_down'] = np.zeros(sim['x_up'].size)
 
     print(sim)
