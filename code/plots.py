@@ -157,7 +157,7 @@ def abcdiag(paramfile, obsfile_up, obsfile_down, dbfile, save):
     """
     db_path = 'sqlite:///' + dbfile
     abc_history = History(db_path)
-    abc_history.id = 9 # make into parameter, or eliminate variability
+    abc_history.id = 10 # make into parameter, or eliminate variability
 
     simtools.PARAMS = toml.load(paramfile)
 
@@ -246,7 +246,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save):
     """
     db_path = 'sqlite:///' + dbfile
     abc_history = History(db_path)
-    abc_history.id = 9 # make into parameter, or eliminate variability
+    abc_history.id = 10 # make into parameter, or eliminate variability
 
     simtools.PARAMS = toml.load(paramfile)
 
@@ -266,7 +266,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save):
 
     x_width = simtools.PARAMS['parameter_range'][1] - \
               simtools.PARAMS['parameter_range'][0]
-    x_axis = np.linspace(-x_width, x_width, 1000)
+    x_axis = np.linspace(-x_width/2, x_width/2, simtools.PARAMS['parameter_points'])
 
     fig, axs = plt.subplots(ncols=2)
     axs[0].plot(x_axis, f_rate(x_axis))
