@@ -8,5 +8,11 @@ dependencies:
 - click=6.7
 - toml=0.9.4
 - jupyter=1.0.0
+- cmake=3.10.3
+- openmpi=4.0.1
+- gxx_linux-64=7.3.0
+- libstdcxx-ng=9.1.0
+- tclap=1.2.1
+- hdf5=1.10.5
 - pip:
     - pyabc==0.9.10
