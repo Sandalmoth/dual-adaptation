@@ -7,6 +7,7 @@ All kinds of plotting
 import csv
 
 import click
+import h5py
 import matplotlib.cm as cm
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -381,6 +382,60 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save):
 
     if save is not None:
         pdf_out.close()
+
+
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-b', '--dbfile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+def generate_dataset(paramfile, dbfile, outfile):
+    """
+    Generate a field using the pde for further c++ mpi simulation
+    """
+
+    db_path = 'sqlite:///' + dbfile
+    abc_history = History(db_path)
+    abc_history.id = 1 # make into parameter, or eliminate variability
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    abc_data, __ = abc_history.get_distribution(m=0, t=abc_history.max_t)
+
+    parameters = ['s', 'c', 'w', 'n']
+    params = {k: np.median(abc_data[k]) for k in parameters}
+
+    f_rate = Rate(params['s'], params['c'], params['w'], 0, 1)
+    f_noise = Noise(params['n'])
+    simtools.PARAMS = toml.load(paramfile)
+
+    f_rate_up = Rate(params['s'], params['c'], params['w'],
+                     simtools.PARAMS['optimum_treatment'], 1)
+    f_rate_down = Rate(params['s'], params['c'], params['w'],
+                       simtools.PARAMS['optimum_normal'], 1)
+
+    f_initial = simtools.get_stationary_distribution_function(
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    time_axis, parameter_axis, parameter_density = simtools.simulate_pde(
+        f_initial,
+        f_rate_up,
+        f_noise,
+        simtools.PARAMS['time_range_up'][1],
+        simtools.PARAMS['time_points_up'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    out = h5py.File(outfile, 'w')
+    gp_pd = out.create_group('parameter_density')
+    gp_pd['time_axis'] = time_axis
+    gp_pd['parameter_axis'] = parameter_axis
+    gp_pd['parameter_density'] = parameter_density
+
 
 
 if __name__ == '__main__':
