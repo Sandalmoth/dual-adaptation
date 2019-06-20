@@ -30,8 +30,9 @@ struct RateBeta {
 int main() {
   RateBeta rate(20, 0.8, 3, 0.0, 1.0);
   DAP<RateBeta> dap(rate, 2701);
-  dap.set_death_rate(0.1);
+  dap.set_death_rate(0.2);
   dap.set_noise_sigma(0.1);
-  auto result = dap.simulate(1000);
+  dap.add_cell(0.0);
+  auto result = dap.simulate(10000);
   std::cout << result.first << '\t' << result.second << std::endl;
 }
