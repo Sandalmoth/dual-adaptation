@@ -152,13 +152,14 @@ def main():
 @click.option('-d', '--obsfile-down', type=click.Path())
 @click.option('-b', '--dbfile', type=click.Path())
 @click.option('--save', type=click.Path(), default=None)
-def abcdiag(paramfile, obsfile_up, obsfile_down, dbfile, save):
+@click.option('-i', '--history-id', type=int, default=1)
+def abcdiag(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     """
     Diagnostic plots for examining how abc fitting worked
     """
     db_path = 'sqlite:///' + dbfile
     abc_history = History(db_path)
-    abc_history.id = 10 # make into parameter, or eliminate variability
+    abc_history.id = history_id
 
     simtools.PARAMS = toml.load(paramfile)
 
@@ -241,13 +242,14 @@ def abcdiag(paramfile, obsfile_up, obsfile_down, dbfile, save):
 @click.option('-d', '--obsfile-down', type=click.Path())
 @click.option('-b', '--dbfile', type=click.Path())
 @click.option('--save', type=click.Path(), default=None)
-def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save):
+@click.option('-i', '--history-id', type=int, default=1)
+def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     """
     Plots showing off the fit from abc
     """
     db_path = 'sqlite:///' + dbfile
     abc_history = History(db_path)
-    abc_history.id = 10 # make into parameter, or eliminate variability
+    abc_history.id = history_id
 
     simtools.PARAMS = toml.load(paramfile)
 
@@ -388,14 +390,15 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save):
 @click.option('-p', '--paramfile', type=click.Path())
 @click.option('-b', '--dbfile', type=click.Path())
 @click.option('-o', '--outfile', type=click.Path())
-def generate_dataset(paramfile, dbfile, outfile):
+@click.option('-i', '--history-id', type=int, default=1)
+def generate_dataset(paramfile, dbfile, outfile, history_id):
     """
     Generate a field using the pde for further c++ mpi simulation
     """
 
     db_path = 'sqlite:///' + dbfile
     abc_history = History(db_path)
-    abc_history.id = 1 # make into parameter, or eliminate variability
+    abc_history.id = history_id
 
     simtools.PARAMS = toml.load(paramfile)
 
