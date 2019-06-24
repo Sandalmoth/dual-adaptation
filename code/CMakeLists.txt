@@ -13,7 +13,7 @@ target_link_libraries(dap-mpi ${HDF5_LIBRARIES})
 target_link_libraries(dap-mpi ${HDF5_CXX_LIBRARIES} "${CMAKE_ROOT}/../../lib/libhdf5_cpp.a" "${CMAKE_ROOT}/../../lib/libhdf5.a")
 
 # Compilation flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++17")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -pthread -std=c++17")
 
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
   # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Og -ggdb") # debug compilation

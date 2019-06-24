@@ -433,12 +433,21 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
         simtools.PARAMS['parameter_points']
     )
 
+    # write parameter density hdf5
     out = h5py.File(outfile, 'w')
     gp_pd = out.create_group('parameter_density')
     gp_pd['time_axis'] = time_axis
     gp_pd['parameter_axis'] = parameter_axis
     gp_pd['parameter_density'] = parameter_density
 
+    # write rate function data to simulation config toml
+    simtools.PARAMS['mpi_noise_function_sigma'] = params['n']
+    simtools.PARAMS['mpi_rate_function_width'] = params['w']
+    simtools.PARAMS['mpi_rate_function_center'] = params['c']
+    simtools.PARAMS['mpi_rate_function_shape'] = params['s']
+
+    with open(paramfile, 'w') as params_toml:
+        toml.dump(simtools.PARAMS, params_toml)
 
 
 if __name__ == '__main__':
