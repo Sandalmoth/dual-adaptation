@@ -1,6 +1,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,17 @@ struct RateBeta {
     return y;
   }
 };
+
+
+// template <typename T>
+// struct DensitySampler {
+//   double* density;
+//   size_t n;
+//   T& rng;
+//   double operator()() {
+//     return 0.0;
+//   }
+// };
 
 
 struct Arguments {
@@ -229,18 +241,31 @@ int main(int argc, char** argv) {
   bool *result_escaped = new bool[parameters.simulations_per_time_point*parameters.time_points/world_size];
   double *result_time = new double[parameters.simulations_per_time_point*parameters.time_points/world_size];
 
-#pragma omp parallel for num_threads(parameters.cores_per_node)
-  for (size_t i = 0; i < parameters.time_points/world_size; ++i) {
-    std::cout << i << ' ' << world_rank << std::endl;
-    for (size_t j = 0; j < parameters.simulations_per_time_point; ++j) {
-      DAP<RateBeta> dap(rate, 2701); // TODO seed processes properly!
-      dap.set_death_rate(0.2); // TODO make into parameter
-      dap.add_cell(0.0); // TODO sample starting cell from distribution
-      auto result = dap.simulate(parameters.max_population_size);
-      result_escaped[i*parameters.simulations_per_time_point + j] = result.first;
-      result_time[i*parameters.simulations_per_time_point + j] = result.second;
+#pragma omp parallel num_threads(parameters.cores_per_node)
+  {
+    std::mt19937 rng; // TODO read seeds from file in some way
+
+#pragma omp for
+    for (size_t i = 0; i < parameters.time_points/world_size; ++i) {
+
+      // Set up parameter distribution for simulations at this time
+      std::piecewise_linear_distribution<double>
+        parameter_distribution(parameter_axis,
+                               parameter_axis + parameters.parameter_points,
+                               parameter_density + parameters.parameter_points*i*world_size + world_rank);
+
+      for (size_t j = 0; j < parameters.simulations_per_time_point; ++j) {
+        DAP<RateBeta> dap(rate, rng());
+        dap.set_death_rate(0.2); // TODO make into parameter
+        dap.add_cell(parameter_distribution(rng));
+        auto result = dap.simulate(parameters.max_population_size);
+        result_escaped[i*parameters.simulations_per_time_point + j] = result.first;
+        result_time[i*parameters.simulations_per_time_point + j] = result.second;
+      }
     }
   }
+
+  // TODO write result to hdf5 outfile
 
   // Free dynamic memory
   delete time_axis;
