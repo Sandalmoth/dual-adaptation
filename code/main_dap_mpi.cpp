@@ -18,6 +18,10 @@
 std::string VERSION = "0.0.2";
 
 
+const bool RESULT_ESCAPED_FILL = false;
+const double RESULT_TIME_FILL = 0.0;
+
+
 struct RateBeta {
   RateBeta(double s, double c, double w, double u, double m)
     : a(s*c)
@@ -265,7 +269,55 @@ int main(int argc, char** argv) {
     }
   }
 
-  // TODO write result to hdf5 outfile
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  std::cout << "Simulations finished" << std::endl;
+
+  // TODO use parallel HDF5? maybe h5cpp library?
+  if (world_rank == 0) {
+    // one process creates the file and sets up the datasets
+    H5::H5File outfile(arguments.outfile, H5F_ACC_TRUNC);
+    H5::Group gp_result = outfile.createGroup("result");
+    hsize_t dims[2] = {parameters.simulations_per_time_point, parameters.time_points};
+    H5::DataSpace sp(2, dims);
+    H5::DSetCreatPropList pl_escaped;
+    H5::DSetCreatPropList pl_time;
+    pl_escaped.setFillValue(H5::PredType::NATIVE_HBOOL, &RESULT_ESCAPED_FILL);
+    pl_time.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_TIME_FILL);
+    pl_escaped.setDeflate(5);
+    pl_time.setDeflate(5);
+    hsize_t chunk_dims[2] {parameters.simulations_per_time_point, parameters.time_points/world_size};
+    pl_escaped.setChunk(2, chunk_dims);
+    pl_time.setChunk(2, chunk_dims);
+    gp_result.createDataSet("escaped", H5::PredType::NATIVE_HBOOL, sp, pl_escaped);
+    gp_result.createDataSet("time", H5::PredType::NATIVE_DOUBLE, sp, pl_time);
+  }
+
+  std::cout << "Created output file" << std::endl;
+
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  // Iterate over all MPI processes taking turns to write result
+  for (int i = 0; i < world_size; ++i) {
+    if (world_rank == i) {
+      H5::H5File outfile(arguments.outfile, H5F_ACC_RDWR);
+      H5::Group gp_result = outfile.openGroup("result");
+      H5::DataSet ds_escaped = gp_result.openDataSet("escaped");
+      H5::DataSet ds_time = gp_result.openDataSet("time");
+      H5::DataSpace sp_escaped = ds_escaped.getSpace();
+      H5::DataSpace sp_time = ds_time.getSpace();
+      hsize_t start[2] {0, world_rank*parameters.time_points/world_size};
+      hsize_t count[2] {parameters.simulations_per_time_point, parameters.time_points/world_size};
+      sp_escaped.selectHyperslab(H5S_SELECT_SET, count, start);
+      sp_time.selectHyperslab(H5S_SELECT_SET, count, start);
+      H5::DataSpace sp_mem(2, count);
+      ds_escaped.write(result_escaped, H5::PredType::NATIVE_HBOOL, sp_mem, sp_escaped);
+      ds_time.write(result_time, H5::PredType::NATIVE_HBOOL, sp_mem, sp_time);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+
+  std::cout << "Wrote result" << std::endl;
 
   // Free dynamic memory
   delete time_axis;
@@ -275,13 +327,5 @@ int main(int argc, char** argv) {
   delete result_time;
 
   MPI_Finalize();
-
-  // RateBeta rate(20, 0.8, 3, 0.0, 1.0);
-  // DAP<RateBeta> dap(rate, 2701);
-  // dap.set_death_rate(0.2);
-  // dap.set_noise_sigma(0.1);
-  // dap.add_cell(0.0);
-  // auto result = dap.simulate(10000);
-  // std::cout << result.first << '\t' << result.second << std::endl;
 
 }
