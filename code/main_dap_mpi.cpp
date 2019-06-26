@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -15,7 +16,7 @@
 #include "dual_adaptation_process.h"
 
 
-std::string VERSION = "0.0.2";
+std::string VERSION = "0.1.0";
 
 
 const bool RESULT_ESCAPED_FILL = false;
@@ -59,6 +60,7 @@ struct Arguments {
   std::string infile;
   std::string outfile;
   std::string paramfile;
+  int verbosity;
 };
 
 
@@ -124,6 +126,11 @@ double* read_vector_2d(H5::DataSet &ds, H5::PredType pt, size_t row_dim) {
 
 int main(int argc, char** argv) {
 
+  auto total_timer = [start = std::chrono::system_clock::now()] {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()
+                                                                 - start).count();
+  };
+
   Arguments arguments;
   Parameters parameters;
 
@@ -142,12 +149,14 @@ int main(int argc, char** argv) {
                                                true, "", "*.hdf5", cmd);
 		TCLAP::ValueArg<std::string> a_parameter_file("p", "parameter-file", "Path to parameter file",
                                                   true, "", "*.toml", cmd);
+    TCLAP::MultiSwitchArg a_verbosity("v", "verbosity", "Increase verbosity of output", cmd);
 
     cmd.parse(argc, argv);
 
     arguments.infile = a_input_file.getValue();
     arguments.outfile = a_output_file.getValue();
     arguments.paramfile = a_parameter_file.getValue();
+    arguments.verbosity = a_verbosity.getValue();
 
   } catch (TCLAP::ArgException &e) {
     std::cerr << "TCLAP Error: " << e.error() << std::endl << "\targ: " << e.argId() << std::endl;
@@ -161,8 +170,6 @@ int main(int argc, char** argv) {
   int world_size;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-  std::cout << world_rank << ' ' << world_size << ' ' << std::endl;
-
   // Load parameter density data in one process
   if (world_rank == 0) {
     try {
@@ -170,15 +177,15 @@ int main(int argc, char** argv) {
       H5::H5File infile(arguments.infile, H5F_ACC_RDONLY);
       H5::Group gp_parameter_density = infile.openGroup("parameter_density");
 
-      std::cout << "Loading time axis" << std::endl;
+      if (arguments.verbosity > 1) std::cout << "Loading time axis" << std::endl;
       H5::DataSet ds_time_axis = gp_parameter_density.openDataSet("time_axis");
       time_axis = read_vector(ds_time_axis, H5::PredType::NATIVE_DOUBLE);
 
-      std::cout << "Loading parameter axis" << std::endl;
+      if (arguments.verbosity > 1) std::cout << "Loading parameter axis" << std::endl;
       H5::DataSet ds_parameter_axis = gp_parameter_density.openDataSet("parameter_axis");
       parameter_axis = read_vector(ds_parameter_axis, H5::PredType::NATIVE_DOUBLE);
 
-      std::cout << "Loading parameter density" << std::endl;
+      if (arguments.verbosity > 1) std::cout << "Loading parameter density" << std::endl;
       H5::DataSet ds_parameter_density = gp_parameter_density.openDataSet("parameter_density");
       parameter_density = read_vector_2d(ds_parameter_density, H5::PredType::NATIVE_DOUBLE, 1);
 
@@ -215,6 +222,9 @@ int main(int argc, char** argv) {
       parameters_toml->get_as<double>("mpi_rate_function_width").value_or(-1);
   }
 
+  if (world_rank == 0 && arguments.verbosity)
+    std::cout << total_timer() << "\tSuccessfully parsed input data" << std::endl;
+
   // Broadcast parameter density and simulation parameters
   // Consider broadcasting one struct instead
   //   (since this happens only once, performance effects are probably negligible)
@@ -242,6 +252,13 @@ int main(int argc, char** argv) {
   // Data transfer could be reduced by using scatter instead
   MPI_Bcast(parameter_density, parameters.parameter_points*parameters.time_points,
             MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  if (world_rank == 0 && arguments.verbosity)
+    std::cout << total_timer() << "\tSuccessfully broadcasted input data" << std::endl;
+
+  if (world_rank == 0 && arguments.verbosity > 1)
+    std::cout << "MPI world size: " << world_size
+              << "\nThreads per node: " << parameters.cores_per_node << std::endl;
 
   // Construct rate function since it is reused without further changes
   RateBeta rate(parameters.rate_function_shape,
@@ -279,7 +296,8 @@ int main(int argc, char** argv) {
 
   MPI_Barrier(MPI_COMM_WORLD);
 
-  std::cout << "Simulations finished" << std::endl;
+  if (world_rank == 0 && arguments.verbosity)
+    std::cout << total_timer() << "\tSimulations finished" << std::endl;
 
   // TODO use parallel HDF5? maybe h5cpp library?
   if (world_rank == 0) {
@@ -301,7 +319,8 @@ int main(int argc, char** argv) {
     gp_result.createDataSet("time", H5::PredType::NATIVE_DOUBLE, sp, pl_time);
   }
 
-  std::cout << "Created output file" << std::endl;
+  if (world_rank == 0 && arguments.verbosity)
+    std::cout << total_timer() << "\tCreated output file" << std::endl;
 
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -325,7 +344,8 @@ int main(int argc, char** argv) {
     MPI_Barrier(MPI_COMM_WORLD);
   }
 
-  std::cout << "Wrote result" << std::endl;
+  if (world_rank == 0 && arguments.verbosity)
+    std::cout << total_timer() << "\tWrote result" << std::endl;
 
   // Free dynamic memory
   delete time_axis;
