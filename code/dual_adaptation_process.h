@@ -12,26 +12,19 @@
 template <typename TRate>
 class DAP {
 private:
-  std::mt19937 rng;
+  TRate rate; // functor implementing operator()(double) -> double
+  std::mt19937& rng;
 
   double death_rate = 0.0;
   double noise_sigma = 0.0;
 
   std::vector<double> cells;
 
-  TRate rate; // functor implementing operator()(double) -> double
-
 
 public:
-  DAP (TRate rate)
-    : rate(rate) {
-    std::random_device rd;
-    rng.seed(rd());
-  }
-  DAP (TRate rate, typename decltype(rng)::result_type seed)
-    : rate(rate) {
-    rng.seed(seed);
-  }
+  DAP (TRate rate, std::mt19937& rng)
+    : rate(rate)
+    , rng(rng) { }
 
 
   void set_death_rate(double dr) { death_rate = dr; }

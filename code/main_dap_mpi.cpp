@@ -76,6 +76,7 @@ struct Parameters {
   double rate_function_center;
   double rate_function_shape;
   double rate_function_width;
+  std::vector<long> rng_seeds;
 };
 
 
@@ -220,6 +221,13 @@ int main(int argc, char** argv) {
       parameters_toml->get_as<double>("mpi_rate_function_shape").value_or(-1);
     parameters.rate_function_width =
       parameters_toml->get_as<double>("mpi_rate_function_width").value_or(-1);
+    auto seeds = parameters_toml->get_array_of<long>("mpi_rng_seeds");
+    parameters.rng_seeds.assign(seeds->begin(), seeds->end());
+
+    if (parameters.rng_seeds.size() < world_size*parameters.cores_per_node) {
+      std::cerr << "Not enough rng seeds. Provide at least one per thread (= MPI nodes * cores per node)\n";
+      return 1;
+    }
   }
 
   if (world_rank == 0 && arguments.verbosity)
@@ -239,6 +247,15 @@ int main(int argc, char** argv) {
   MPI_Bcast(&parameters.rate_function_center, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_shape, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_width, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  { // reduce scope of some variables
+    size_t num_seeds;
+    if (world_rank == 0)
+      num_seeds = parameters.rng_seeds.size();
+    MPI_Bcast(&num_seeds, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (world_rank != 0)
+      parameters.rng_seeds.resize(num_seeds);
+    MPI_Bcast(parameters.rng_seeds.data(), num_seeds, MPI_LONG, 0, MPI_COMM_WORLD);
+  }
 
   // Processes that aren't rank 0 and didn't load from file need to allocate space
   if (world_rank != 0) {
@@ -272,8 +289,19 @@ int main(int argc, char** argv) {
 
 #pragma omp parallel num_threads(parameters.cores_per_node)
   {
+    // Seed the rng for this thread
+    int thread_rank = omp_get_thread_num();
     std::mt19937 rng; // TODO read seeds from file in some way
+    std::vector<long> seeds;
+    for (size_t i = thread_rank + world_rank*world_size;
+         i < parameters.rng_seeds.size();
+         i += parameters.cores_per_node*world_size) {
+      seeds.push_back(parameters.rng_seeds[i]);
+    }
+    std::seed_seq rng_seed(seeds.begin(), seeds.end());
+    rng.seed(rng_seed);
 
+    // Simulate over a time segment of the parameters density
 #pragma omp for
     for (size_t i = 0; i < parameters.time_points/world_size; ++i) {
 
@@ -284,7 +312,7 @@ int main(int argc, char** argv) {
                                parameter_density + parameters.parameter_points*i*world_size + world_rank);
 
       for (size_t j = 0; j < parameters.simulations_per_time_point; ++j) {
-        DAP<RateBeta> dap(rate, rng());
+        DAP<RateBeta> dap(rate, rng);
         dap.set_death_rate(parameters.death_rate);
         dap.add_cell(parameter_distribution(rng));
         auto result = dap.simulate(parameters.max_population_size, parameters.max_time);
