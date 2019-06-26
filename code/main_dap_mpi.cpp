@@ -68,6 +68,8 @@ struct Parameters {
   size_t simulations_per_time_point;
   size_t cores_per_node;
   size_t max_population_size;
+  double death_rate;
+  double max_time;
   double noise_function_sigma;
   double rate_function_center;
   double rate_function_shape;
@@ -199,6 +201,10 @@ int main(int argc, char** argv) {
       parameters_toml->get_as<size_t>("mpi_cores_per_node").value_or(-1);
     parameters.max_population_size =
       parameters_toml->get_as<size_t>("mpi_max_population_size").value_or(-1);
+    parameters.death_rate =
+      parameters_toml->get_as<double>("mpi_death_rate").value_or(-1);
+    parameters.max_time =
+      parameters_toml->get_as<double>("mpi_max_time").value_or(-1);
     parameters.noise_function_sigma =
       parameters_toml->get_as<double>("mpi_noise_function_sigma").value_or(-1);
     parameters.rate_function_center =
@@ -217,6 +223,8 @@ int main(int argc, char** argv) {
   MPI_Bcast(&parameters.simulations_per_time_point, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.cores_per_node, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.max_population_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&parameters.death_rate, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&parameters.max_time, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.noise_function_sigma, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_center, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_shape, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -260,9 +268,9 @@ int main(int argc, char** argv) {
 
       for (size_t j = 0; j < parameters.simulations_per_time_point; ++j) {
         DAP<RateBeta> dap(rate, rng());
-        dap.set_death_rate(0.2); // TODO make into parameter
+        dap.set_death_rate(parameters.death_rate);
         dap.add_cell(parameter_distribution(rng));
-        auto result = dap.simulate(parameters.max_population_size, 100000); // TODO make into parameter
+        auto result = dap.simulate(parameters.max_population_size, parameters.max_time);
         result_escaped[i*parameters.simulations_per_time_point + j] = result.first;
         result_time[i*parameters.simulations_per_time_point + j] = result.second;
       }
