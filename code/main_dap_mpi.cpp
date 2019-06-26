@@ -262,7 +262,7 @@ int main(int argc, char** argv) {
         DAP<RateBeta> dap(rate, rng());
         dap.set_death_rate(0.2); // TODO make into parameter
         dap.add_cell(parameter_distribution(rng));
-        auto result = dap.simulate(parameters.max_population_size);
+        auto result = dap.simulate(parameters.max_population_size, 100000); // TODO make into parameter
         result_escaped[i*parameters.simulations_per_time_point + j] = result.first;
         result_time[i*parameters.simulations_per_time_point + j] = result.second;
       }

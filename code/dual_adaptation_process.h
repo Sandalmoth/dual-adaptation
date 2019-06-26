@@ -41,7 +41,7 @@ public:
   void add_cell (double parameter) { cells.push_back(parameter); }
 
 
-  std::pair<bool, double> simulate(size_t n_end) {
+  std::pair<bool, double> simulate(size_t n_end, double t_end) {
 
     // simulate with gillespies algorithm until
     // we reach n_end cells total
@@ -62,7 +62,7 @@ public:
 
     double time = 0;
 
-    while (cells.size() > 0 && cells.size() < n_end) {
+    while (cells.size() > 0 && cells.size() < n_end && time < t_end) {
 
       // advance time depending on total event rate (birth or death)
       double total_rate = total_growth_rate + cells.size()*death_rate;
@@ -117,7 +117,7 @@ public:
     }
 
     // return if we reach n_end cells, and the time it took
-    return std::make_pair(cells.size() != 0, time);
+    return std::make_pair(cells.size() == n_end, time);
   }
 
 };
