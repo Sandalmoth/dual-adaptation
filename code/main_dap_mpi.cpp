@@ -302,7 +302,7 @@ int main(int argc, char** argv) {
     rng.seed(rng_seed);
 
     // Simulate over a time segment of the parameters density
-#pragma omp for
+#pragma omp for schedule(static)
     for (size_t i = 0; i < parameters.time_points/world_size; ++i) {
 
       // Set up parameter distribution for simulations at this time
