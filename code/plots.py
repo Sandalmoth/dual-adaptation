@@ -407,7 +407,6 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
     parameters = ['s', 'c', 'w', 'n']
     params = {k: np.median(abc_data[k]) for k in parameters}
 
-    f_rate = Rate(params['s'], params['c'], params['w'], 0, 1)
     f_noise = Noise(params['n'])
     simtools.PARAMS = toml.load(paramfile)
 
@@ -433,12 +432,20 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
         simtools.PARAMS['parameter_points']
     )
 
+    # find the child distribution at each point in time
+    child_density = np.zeros(shape=parameter_density.shape)
+    for i in range(parameter_density.shape[1]):
+        child_density[:, i] = simtools.get_child_distribution(parameter_density[:, i],
+                                                              f_rate_up, f_noise,
+                                                              simtools.PARAMS['parameter_range'])
+
     # write parameter density hdf5
     out = h5py.File(outfile, 'w')
     gp_pd = out.create_group('parameter_density')
     gp_pd['time_axis'] = time_axis
     gp_pd['parameter_axis'] = parameter_axis
-    gp_pd['parameter_density'] = parameter_density
+    # gp_pd['parameter_density'] = parameter_density
+    gp_pd['parameter_density'] = child_density
 
     # write rate function data to simulation config toml
     simtools.PARAMS['mpi_noise_function_sigma'] = params['n']

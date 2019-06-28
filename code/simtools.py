@@ -132,3 +132,31 @@ def get_stationary_distribution_function(f_rate, f_noise, x_view, x_points, iter
     extended_view = [x*2 for x in x_view]
     x, y = get_stationary_distribution(f_rate, f_noise, extended_view, x_points, iters=iters)
     return interp1d(x, y, kind='cubic', bounds_error=False, fill_value=0.0)
+
+
+def get_child_distribution(parameter_density, f_rate, f_noise, x_view):
+    """
+    Given a parameter distribution, get the child distribution.
+    """
+
+    def lr(x):
+        # utility function for 'lenght' of (start, end) tuple
+        return x[1] - x[0]
+
+    # symmetry around 0 is required for convolution
+    x_range = (-amax(x_view)*2, amax(x_view)*2)
+    x_points_full = int(parameter_density.size*lr(x_range)/lr(x_view))
+    x_ix0 = int((x_view[0] - x_range[0])/lr(x_range) * x_points_full)
+    x_ix1 = int((x_view[1] - x_range[1])/lr(x_range) * x_points_full)
+    x = np.linspace(x_range[0], x_range[1], x_points_full)
+
+    parameter_density_full = np.zeros(x.shape)
+    parameter_density_full[x_ix0:x_ix1] = parameter_density
+
+    noise = f_noise(x)
+    rate = f_rate(x)
+
+    child_density = np.convolve(rate*parameter_density_full, noise, mode='same')
+    child_density /= simps(child_density, x=x)
+
+    return child_density[x_ix0:x_ix1]
