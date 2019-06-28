@@ -450,5 +450,119 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
         toml.dump(simtools.PARAMS, params_toml)
 
 
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+@click.option('--save', type=click.Path(), default=None)
+def mpiout(paramfile, outfile, save):
+
+    data = h5py.File(outfile, 'r')
+    gp_result = data['result']
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    if save is not None:
+        pdf_out = PdfPages(save)
+
+
+    # escape probability as a function of time of mutation
+    fig, axs = plt.subplots()
+
+    axs.plot(
+        simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                               simtools.PARAMS['time_points_up']),
+        np.sum(gp_result['escaped'], axis=1)/simtools.PARAMS['mpi_simulations_per_time_point'],
+        color='k',
+        linewidth='1.0'
+    )
+    axs.set_xlabel('Time of mutation')
+    axs.set_ylabel('Probability of a mutant reaching ' + \
+                   str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # death time and escape time distribution as a function of time of mutation
+    fig, axs = plt.subplots(ncols=2)
+    fig.set_size_inches(6, 3)
+
+    escaped = np.array(gp_result['escaped'])
+    time = np.array(gp_result['time'])
+
+    quantiles_death = [[], [], [], []]
+    quantiles_escaped = [[], [], [], []]
+
+    colors = ['grey', 'black', 'grey', 'lightgrey']
+
+    for i in range(escaped.shape[1]):
+        death_times = time[i, :][escaped[i, :] == 0]
+        escaped_times = time[i, :][escaped[i, :] == 1]
+        q_death = np.percentile(death_times, (25, 50, 75, 95))
+        q_escaped = np.percentile(escaped_times, (25, 50, 75, 95))
+        for j in range(4):
+            quantiles_death[j].append(q_death[j])
+            quantiles_escaped[j].append(q_escaped[j])
+
+    for i, color in enumerate(colors):
+        axs[0].plot(
+            simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                                   simtools.PARAMS['time_points_up']),
+            quantiles_death[i],
+            linewidth=1.0,
+            color=color
+        )
+
+    for i, color in enumerate(colors):
+        axs[1].plot(
+            simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                                   simtools.PARAMS['time_points_up']),
+            quantiles_escaped[i],
+            linewidth=1.0,
+            color=color
+        )
+
+    axs[0].set_xlabel('Time of mutation')
+    axs[1].set_xlabel('Time of mutation')
+    axs[0].set_ylabel('Time of death')
+    axs[1].set_ylabel('Time of escape')
+
+    plt.tight_layout()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # histogram of aggregate death/escape time distributions
+    fig, axs = plt.subplots(ncols=2)
+    fig.set_size_inches(6, 3)
+
+    axs[0].hist(time[escaped == 0], color='lightgrey',
+                range=(0, np.percentile(time[escaped == 0], 99)), bins=100,
+                density=True)
+    axs[1].hist(time[escaped == 1], color='lightgrey',
+                range=(0, np.percentile(time[escaped == 1], 99)), bins=100,
+                density=True)
+
+    x0 = np.linspace(0, np.percentile(time[escaped == 0], 99), 100)
+    death_rate = simtools.PARAMS['mpi_death_rate']
+    axs[0].plot(x0, death_rate*np.exp(-death_rate*x0), color='k', linewidth=1.0)
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    if save is not None:
+        pdf_out.close()
+
+
+
+
 if __name__ == '__main__':
     main()

@@ -367,7 +367,7 @@ int main(int argc, char** argv) {
       sp_time.selectHyperslab(H5S_SELECT_SET, count, start);
       H5::DataSpace sp_mem(2, count);
       ds_escaped.write(result_escaped, H5::PredType::NATIVE_HBOOL, sp_mem, sp_escaped);
-      ds_time.write(result_time, H5::PredType::NATIVE_HBOOL, sp_mem, sp_time);
+      ds_time.write(result_time, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_time);
     }
     MPI_Barrier(MPI_COMM_WORLD);
   }
