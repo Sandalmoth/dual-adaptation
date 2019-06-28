@@ -585,6 +585,40 @@ def mpiout(paramfile, outfile, save):
         plt.show()
 
 
+    # histogram of first parameter in dead/escaped lines
+    fig, axs = plt.subplots(ncols=2)
+    fig.set_size_inches(6, 3)
+
+    first_parameter = np.array(gp_result['first_parameter'])
+
+    axs[0].hist(first_parameter[escaped == 0], color='lightgrey',
+                bins=100, density=True)
+    axs[1].hist(first_parameter[escaped == 1], color='lightgrey',
+                bins=100, density=True)
+
+    f_rate_down = Rate(
+        simtools.PARAMS['mpi_rate_function_shape'],
+        simtools.PARAMS['mpi_rate_function_center'],
+        simtools.PARAMS['mpi_rate_function_width'],
+        simtools.PARAMS['optimum_normal'], 1)
+
+    x0 = np.linspace(axs[0].get_xlim()[0], axs[0].get_xlim()[1], 1000)
+    axs[0].plot(x0, f_rate_down(x0)*axs[0].get_ylim()[1], color='k', linewidth=1.0)
+    x1 = np.linspace(axs[1].get_xlim()[0], axs[1].get_xlim()[1], 1000)
+    axs[1].plot(x1, f_rate_down(x1)*axs[1].get_ylim()[1], color='k', linewidth=1.0)
+
+    for i in range(2):
+        axs[i].set_xlabel('Parameter')
+        axs[i].set_ylabel('Probability density')
+
+    plt.tight_layout()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
     if save is not None:
         pdf_out.close()
 

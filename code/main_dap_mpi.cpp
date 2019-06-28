@@ -17,11 +17,13 @@
 #include "dual_adaptation_process.h"
 
 
-std::string VERSION = "0.1.0";
+std::string VERSION = "0.1.1";
 
 
 const bool RESULT_ESCAPED_FILL = false;
 const double RESULT_TIME_FILL = 0.0;
+const int RESULT_MAX_CELLS_FILL = 0;
+const double RESULT_FIRST_PARAMETER_FILL = 0.0;
 
 
 struct RateBeta {
@@ -288,6 +290,7 @@ int main(int argc, char** argv) {
   bool* result_escaped = new bool[parameters.simulations_per_time_point*parameters.time_points/world_size];
   double* result_time = new double[parameters.simulations_per_time_point*parameters.time_points/world_size];
   int* result_max_cells = new int[parameters.simulations_per_time_point*parameters.time_points/world_size];
+  double* result_first_parameter = new double[parameters.simulations_per_time_point*parameters.time_points/world_size];
 
 #pragma omp parallel num_threads(parameters.cores_per_node)
   {
@@ -316,11 +319,13 @@ int main(int argc, char** argv) {
       for (size_t j = 0; j < parameters.simulations_per_time_point; ++j) {
         DAP<RateBeta> dap(rate, rng);
         dap.set_death_rate(parameters.death_rate);
-        dap.add_cell(parameter_distribution(rng));
+        double first_parameter = parameter_distribution(rng);
+        dap.add_cell(first_parameter);
         auto result = dap.simulate(parameters.max_population_size, parameters.max_time);
         result_escaped[i*parameters.simulations_per_time_point + j] = std::get<0>(result);
         result_time[i*parameters.simulations_per_time_point + j] = std::get<1>(result);
         result_max_cells[i*parameters.simulations_per_time_point + j] = std::get<2>(result);
+        result_first_parameter[i*parameters.simulations_per_time_point + j] = first_parameter;
       }
     }
   }
@@ -339,16 +344,25 @@ int main(int argc, char** argv) {
     H5::DataSpace sp(2, dims);
     H5::DSetCreatPropList pl_escaped;
     H5::DSetCreatPropList pl_time;
+    H5::DSetCreatPropList pl_max_cells;
+    H5::DSetCreatPropList pl_first_parameter;
     pl_escaped.setFillValue(H5::PredType::NATIVE_HBOOL, &RESULT_ESCAPED_FILL);
     pl_time.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_TIME_FILL);
+    pl_max_cells.setFillValue(H5::PredType::NATIVE_INT, &RESULT_MAX_CELLS_FILL);
+    pl_first_parameter.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_FIRST_PARAMETER_FILL);
     pl_escaped.setDeflate(5);
     pl_time.setDeflate(5);
+    pl_max_cells.setDeflate(5);
+    pl_first_parameter.setDeflate(5);
     hsize_t chunk_dims[2] {parameters.simulations_per_time_point, parameters.time_points/world_size};
     pl_escaped.setChunk(2, chunk_dims);
     pl_time.setChunk(2, chunk_dims);
+    pl_max_cells.setChunk(2, chunk_dims);
+    pl_first_parameter.setChunk(2, chunk_dims);
     gp_result.createDataSet("escaped", H5::PredType::NATIVE_HBOOL, sp, pl_escaped);
     gp_result.createDataSet("time", H5::PredType::NATIVE_DOUBLE, sp, pl_time);
-    gp_result.createDataSet("max_cells", H5::PredType::NATIVE_INT, sp, pl_time);
+    gp_result.createDataSet("max_cells", H5::PredType::NATIVE_INT, sp, pl_max_cells);
+    gp_result.createDataSet("first_parameter", H5::PredType::NATIVE_DOUBLE, sp, pl_first_parameter);
   }
 
   if (world_rank == 0 && arguments.verbosity)
@@ -364,18 +378,22 @@ int main(int argc, char** argv) {
       H5::DataSet ds_escaped = gp_result.openDataSet("escaped");
       H5::DataSet ds_time = gp_result.openDataSet("time");
       H5::DataSet ds_max_cells = gp_result.openDataSet("max_cells");
+      H5::DataSet ds_first_parameter = gp_result.openDataSet("first_parameter");
       H5::DataSpace sp_escaped = ds_escaped.getSpace();
       H5::DataSpace sp_time = ds_time.getSpace();
       H5::DataSpace sp_max_cells = ds_max_cells.getSpace();
+      H5::DataSpace sp_first_parameter = ds_first_parameter.getSpace();
       hsize_t start[2] {0, world_rank*parameters.time_points/world_size};
       hsize_t count[2] {parameters.simulations_per_time_point, parameters.time_points/world_size};
       sp_escaped.selectHyperslab(H5S_SELECT_SET, count, start);
       sp_time.selectHyperslab(H5S_SELECT_SET, count, start);
       sp_max_cells.selectHyperslab(H5S_SELECT_SET, count, start);
+      sp_first_parameter.selectHyperslab(H5S_SELECT_SET, count, start);
       H5::DataSpace sp_mem(2, count);
       ds_escaped.write(result_escaped, H5::PredType::NATIVE_HBOOL, sp_mem, sp_escaped);
       ds_time.write(result_time, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_time);
       ds_max_cells.write(result_max_cells, H5::PredType::NATIVE_INT, sp_mem, sp_max_cells);
+      ds_first_parameter.write(result_first_parameter, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_first_parameter);
     }
     MPI_Barrier(MPI_COMM_WORLD);
   }
@@ -389,6 +407,8 @@ int main(int argc, char** argv) {
   delete parameter_density;
   delete result_escaped;
   delete result_time;
+  delete result_max_cells;
+  delete result_first_parameter;
 
   MPI_Finalize();
 
