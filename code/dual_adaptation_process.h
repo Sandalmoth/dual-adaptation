@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <numeric>
 #include <random>
+#include <tuple>
 #include <vector>
 #include <utility>
 
@@ -34,7 +35,7 @@ public:
   void add_cell (double parameter) { cells.push_back(parameter); }
 
 
-  std::pair<bool, double> simulate(size_t n_end, double t_end) {
+  auto simulate(size_t n_end, double t_end) {
 
     // simulate with gillespies algorithm until
     // we reach n_end cells total
@@ -54,6 +55,7 @@ public:
                                                0.0);
 
     double time = 0;
+    size_t max_cells = cells.size();
 
     while (cells.size() > 0 && cells.size() < n_end && time < t_end) {
 
@@ -86,6 +88,9 @@ public:
         // add to list
         cells.push_back(new_cell);
         growth_rates.push_back(new_cell_rate);
+        // update max cells if we broke the record
+        if (cells.size() > max_cells)
+          max_cells = cells.size();
 
       } else {
 
@@ -109,8 +114,8 @@ public:
 
     }
 
-    // return if we reach n_end cells, and the time it took
-    return std::make_pair(cells.size() == n_end, time);
+    // return if we reach n_end cells, the time it took, and the greatest number of cells reached
+    return std::make_tuple(cells.size() == n_end, time, max_cells);
   }
 
 };

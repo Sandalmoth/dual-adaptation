@@ -550,7 +550,34 @@ def mpiout(paramfile, outfile, save):
 
     x0 = np.linspace(0, np.percentile(time[escaped == 0], 99), 100)
     death_rate = simtools.PARAMS['mpi_death_rate']
-    axs[0].plot(x0, death_rate*np.exp(-death_rate*x0), color='k', linewidth=1.0)
+    axs[0].plot(x0, death_rate*np.exp(-death_rate*x0), color='k', linewidth=1.0,
+                label='Exponential dist.\n$\lambda$ = Death rate')
+    axs[0].legend()
+    axs[0].set_xlabel('Time of death')
+    axs[1].set_xlabel('Time of escape')
+    axs[0].set_ylabel('Probability density')
+    axs[1].set_ylabel('Probability density')
+
+    plt.tight_layout()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # histogram of max # cells in populations that did not escape
+    fig, axs = plt.subplots()
+    fig.set_size_inches(4, 4)
+
+    max_cells = np.array(gp_result['max_cells'])
+
+    axs.hist(max_cells[escaped == 0], color='k',
+                range=(0.5, 5.5), bins=5)
+    axs.set_xlabel('Maximum number of cells achieved')
+    axs.set_ylabel('Frequency')
+
+    plt.tight_layout()
 
     if save is not None:
         pdf_out.savefig()
