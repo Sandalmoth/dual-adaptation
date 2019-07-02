@@ -458,6 +458,65 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
 
 
 @main.command()
+@click.option('-i', '--infile', type=click.Path())
+@click.option('--save', type=click.Path(), default=None)
+def plot_dataset(infile, save):
+    """
+    Plots for examining input to mpi simulator
+    """
+
+    def lr(x):
+        return abs(x[-1] - x[0])
+
+    data = h5py.File(infile, 'r')
+    gp_pd = data['parameter_density']
+
+    if save is not None:
+        pdf_out = PdfPages(save)
+
+    parameter_density = np.array(gp_pd['parameter_density'])
+    parameter_axis = np.array(gp_pd['parameter_axis'])
+    time_axis = np.array(gp_pd['time_axis'])
+
+    # child density plot
+    fig, axs = plt.subplots()
+    fig.set_size_inches(4, 4)
+    axs.imshow(
+        np.transpose(parameter_density),
+        extent=(np.min(parameter_axis), np.max(parameter_axis),
+                np.min(time_axis), np.max(time_axis)),
+        aspect=lr(parameter_axis)/lr(time_axis),
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+    axs.set_ylabel('Time')
+    axs.set_xlabel('Parameter density')
+    axs.grid()
+    plt.tight_layout()
+    plt.show()
+
+    # child density first vs last
+    fig, axs = plt.subplots()
+    fig.set_size_inches(4, 3)
+    axs.plot(parameter_axis, parameter_density[:, 0], color='k', linewidth=1.0, label='t = 0')
+    axs.plot(parameter_axis, parameter_density[:, -1], color='k', linewidth=1.0, linestyle='--',
+             label='t = ' + str(time_axis[-1]))
+    axs.set_xlabel('Time')
+    axs.set_ylabel('Parameter density')
+    axs.legend()
+    plt.tight_layout()
+    plt.show()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    if save is not None:
+        pdf_out.close()
+
+@main.command()
 @click.option('-p', '--paramfile', type=click.Path())
 @click.option('-o', '--outfile', type=click.Path())
 @click.option('--save', type=click.Path(), default=None)
