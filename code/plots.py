@@ -481,7 +481,7 @@ def plot_dataset(infile, save):
     # child density plot
     fig, axs = plt.subplots()
     fig.set_size_inches(4, 4)
-    axs.imshow(
+    img = axs.imshow(
         np.transpose(parameter_density),
         extent=(np.min(parameter_axis), np.max(parameter_axis),
                 np.min(time_axis), np.max(time_axis)),
@@ -489,9 +489,16 @@ def plot_dataset(infile, save):
         cmap=cm.cubehelix,
         origin='lower'
     )
+
+    cbr = fig.colorbar(img, ax=axs, fraction=0.046, pad=0.04)
+    cbr.set_label('Parameter density', labelpad=-15)
+    cbr.set_ticks([np.min(parameter_density), np.max(parameter_density)])
+    cbr.set_ticklabels(['Low', 'High'])
+
     axs.set_ylabel('Time')
-    axs.set_xlabel('Parameter density')
+    axs.set_xlabel('Parameter')
     axs.grid()
+
     plt.tight_layout()
     plt.show()
 
@@ -516,6 +523,21 @@ def plot_dataset(infile, save):
     if save is not None:
         pdf_out.close()
 
+
+def moving_mean(vector, window):
+    """
+    Calculate moving median of array-like object
+    """
+    extent = (window - 1) / 2
+    average = []
+    for i, __ in enumerate(vector):
+        imin = int(i - extent) if i - extent > 0 else 0
+        imax = int(i + extent + 1) if i + extent < len(vector) else len(vector)
+        sample = sorted(vector[imin:imax])
+        average.append(sum(sample) / len(sample))
+    return np.array(average)
+
+
 @main.command()
 @click.option('-p', '--paramfile', type=click.Path())
 @click.option('-o', '--outfile', type=click.Path())
@@ -534,13 +556,13 @@ def mpiout(paramfile, outfile, save):
     # escape probability as a function of time of mutation
     fig, axs = plt.subplots()
 
-    axs.plot(
-        simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
-                               simtools.PARAMS['time_points_up']),
-        np.sum(gp_result['escaped'], axis=1)/simtools.PARAMS['mpi_simulations_per_time_point'],
-        color='k',
-        linewidth='1.0'
-    )
+    time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                                       simtools.PARAMS['time_points_up'])
+    escaped_sum = np.sum(gp_result['escaped'], axis=1) / \
+                  simtools.PARAMS['mpi_simulations_per_time_point']
+
+    axs.plot(time_axis, escaped_sum, color='lightgrey', linewidth='0.5')
+    axs.plot(time_axis, moving_mean(escaped_sum, 101), color='k', linewidth='1.0')
     axs.set_xlabel('Time of mutation')
     axs.set_ylabel('Probability of a mutant reaching ' + \
                    str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
@@ -669,13 +691,19 @@ def mpiout(paramfile, outfile, save):
         simtools.PARAMS['optimum_normal'], 1)
 
     x0 = np.linspace(axs[0].get_xlim()[0], axs[0].get_xlim()[1], 1000)
-    axs[0].plot(x0, f_rate_down(x0)*axs[0].get_ylim()[1], color='k', linewidth=1.0)
+    axs[0].plot(x0, f_rate_down(x0)*axs[0].get_ylim()[1], color='k', linewidth=1.0, label='Rate function')
     x1 = np.linspace(axs[1].get_xlim()[0], axs[1].get_xlim()[1], 1000)
-    axs[1].plot(x1, f_rate_down(x1)*axs[1].get_ylim()[1], color='k', linewidth=1.0)
+    axs[1].plot(x1, f_rate_down(x1)*axs[1].get_ylim()[1], color='k', linewidth=1.0, label='Rate function')
+
+    axs[1].legend()
 
     for i in range(2):
-        axs[i].set_xlabel('Parameter')
+        axs[i].set_xlabel('Parameter of first cell')
         axs[i].set_ylabel('Probability density')
+
+    axs[0].set_title('Mutants that did not survive')
+    axs[1].set_title('Mutants that reached ' + \
+                     str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
 
     plt.tight_layout()
 
