@@ -204,8 +204,6 @@ def abc_model(params):
     )
     sim['s_down'] = np.zeros(sim['x_up'].size)
 
-    print(sim)
-
     return sim
 
 
@@ -213,9 +211,6 @@ def abc_distance(obs1, obs2):
     """
     Weighted rmsd between two dataset.
     """
-
-    print(obs1)
-    print(obs2)
 
     total = 0
 
