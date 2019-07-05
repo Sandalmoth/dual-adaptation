@@ -150,9 +150,9 @@ def abc_model(params):
     sim = {}
     f_noise = Noise(params['n'])
     f_rate_up = Rate(params['s'], params['c'], params['w'],
-                     simtools.PARAMS['optimum_treatment'], 1)
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
     f_rate_down = Rate(params['s'], params['c'], params['w'],
-                       simtools.PARAMS['optimum_normal'], 1)
+                       simtools.PARAMS['optimum_normal'], params['m'])
     parameter_range = simtools.PARAMS['parameter_range'][1] - \
                       simtools.PARAMS['parameter_range'][0]
 
@@ -247,10 +247,12 @@ def abc_setup():
     """
 
     abc_prior_dict = {
-        's': RV("uniform", 0, 50),
-        'c': RV("uniform", 0.1, 0.9),
-        'w': RV("uniform", 0.1, 5),
-        'n': RV("uniform", 0.01, 5)
+        's': RV("uniform", *simtools.PARAMS['abc_limits_shape']),
+        'c': RV("uniform", *simtools.PARAMS['abc_limits_center']),
+        'w': RV("uniform", *simtools.PARAMS['abc_limits_width']),
+        'n': RV("uniform", *simtools.PARAMS['abc_limits_noise_sigma']),
+        'm': RV("uniform", *simtools.PARAMS['abc_limits_normal_maximum_rate']),
+        'r': RV("uniform", *simtools.PARAMS['abc_limits_maximum_rate_ratio']),
     }
 
     abc_priors = Distribution(abc_prior_dict)
