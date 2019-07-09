@@ -253,7 +253,10 @@ def abc_setup():
     abc_priors = Distribution(abc_prior_dict)
 
     abc = ABCSMC(abc_model, abc_priors, abc_distance,
-                 population_size=AdaptivePopulationSize(simtools.PARAMS['abc_initial_population_size'], 0.15),
+                 population_size=AdaptivePopulationSize(
+                     simtools.PARAMS['abc_initial_population_size'],
+                     mean_cv=simtools.PARAMS['abc_population_size_epsilon'],
+                     max_population_size=simtools.PARAMS['abc_population_size_maximum']),
                  sampler=MulticoreEvalParallelSampler(simtools.PARAMS['abc_parallel_simulations']))
 
     return abc

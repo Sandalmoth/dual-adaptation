@@ -110,13 +110,14 @@ def get_stationary_distribution(f_rate, f_noise, x_view, x_points, iters=100):
     x_points_full = int(x_points*lr(x_range)/lr(x_view))
     x = np.linspace(x_range[0], x_range[1], x_points_full)
 
+    rate = f_rate(x)
     noise = f_noise(x)
 
     # We can start the iteration from any distribution
     stationary = np.ones(x.size)
 
     for __ in range(iters):
-        stationary = stationary*f_rate(x)
+        stationary = stationary*rate
         stationary = np.convolve(stationary, noise, mode='same')
         stationary /= simps(stationary, x=x)
 
