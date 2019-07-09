@@ -5,7 +5,7 @@ given a hypothetical experiment timeline.
 
 
 import csv
-import time
+from timeit import default_timer as timer
 
 import click
 import numpy as np
