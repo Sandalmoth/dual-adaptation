@@ -170,7 +170,8 @@ def abc_model(params):
         simtools.PARAMS['time_range_up'][1],
         simtools.PARAMS['time_points_up'],
         simtools.PARAMS['parameter_range'],
-        simtools.PARAMS['parameter_points']
+        simtools.PARAMS['parameter_points'],
+        simtools.PARAMS['abc_convolution_method']
     )
 
     sim['x_up'] = np.array(
@@ -194,7 +195,8 @@ def abc_model(params):
         simtools.PARAMS['time_range_down'][1],
         simtools.PARAMS['time_points_down'],
         simtools.PARAMS['parameter_range'],
-        simtools.PARAMS['parameter_points']
+        simtools.PARAMS['parameter_points'],
+        simtools.PARAMS['abc_convolution_method']
     )
 
     sim['x_down'] = np.array(

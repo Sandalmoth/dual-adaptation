@@ -6,6 +6,7 @@ Shared tools for simulation
 import numpy as np
 from scipy.integrate import simps
 from scipy.interpolate import interp1d
+from scipy.signal import fftconvolve
 
 
 # Needs to be in global scope here rather than in abc.py
@@ -28,7 +29,7 @@ def get_time_axis(t_end, t_points):
     return np.linspace(t_range[0], t_range[1], t_points)
 
 
-def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points):
+def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points, convolve_method='np'):
     """
     Simulate evolution of parameter probability density with PDE formulation.
 
@@ -41,6 +42,14 @@ def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points):
     :param x_points int: parameter resolution (total samples)
     :returns: (time axis [np array], parameter axis [np array], density over time [2d np array])
     """
+
+    if convolve_method == 'np':
+        convolve_method = np.convolve
+    elif convolve_method == 'fft':
+        convolve_method = fftconvolve
+    else:
+        print("Unknown convolution method:", convolve_method)
+        exit(0)
 
     def lr(x):
         # utility function for 'lenght' of (start, end) tuple
@@ -70,11 +79,11 @@ def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points):
 
     # solve
     for i in range(1, t_points):
-        dxh = np.convolve(rate*mesh[:, i-1],
+        dxh = convolve_method(rate*mesh[:, i-1],
                           noise, mode='same') / (x_points/lr(x_range)) - \
                           mesh[:, i-1] * simps(rate*mesh[:, i-1], x=x)
         xh = mesh[:, i-1] + dxh*k/2
-        dx = np.convolve(rate*xh, noise, mode='same') / (x_points/lr(x_range)) - \
+        dx = convolve_method(rate*xh, noise, mode='same') / (x_points/lr(x_range)) - \
                          xh * simps(rate*xh, x=x)
         mesh[:, i] = mesh[:, i-1] + dx*k
 
