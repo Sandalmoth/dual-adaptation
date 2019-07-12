@@ -193,15 +193,15 @@ def abcdiag(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
 
     # PLOT SHOWING PARAMETERS WITH CONFIDENCE OVER GENERATIONS ###
 
-    fig, axs = plt.subplots(nrows=4, sharex=True)
+    fig, axs = plt.subplots(nrows=6, ncols=2)
 
     t_axis = np.arange(abc_history.max_t + 1)
     quartile1 = []
     medians = []
     quartile3 = []
-    parameters = ['s', 'c', 'w', 'n']
+    parameters = ['s', 'c', 'w', 'n', 'm', 'r']
 
-    for generation in t_axis:
+    for i, generation in enumerate(t_axis):
         abc_data, __ = abc_history.get_distribution(m=0, t=generation)
         data = [abc_data[x] for x in parameters]
         t_quartile1, t_medians, t_quartile3 = np.percentile(
@@ -211,19 +211,28 @@ def abcdiag(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
         medians.append(t_medians)
         quartile3.append(t_quartile3)
 
+        last_distro = data
+        if i == 0:
+            first_distro = data
+
     quartile1 = np.array(quartile1)
     medians = np.array(medians)
     quartile3 = np.array(quartile3)
 
     for i, param in enumerate(parameters):
-        axs[i].plot(t_axis, medians[:, i])
-        axs[i].fill_between(t_axis, quartile1[:, i], quartile3[:, i],
+        axs[i][0].plot(t_axis, medians[:, i])
+        axs[i][0].fill_between(t_axis, quartile1[:, i], quartile3[:, i],
                             alpha=0.3, color='gray')
-        axs[i].set_ylabel(param)
+        axs[i][0].set_ylabel(param)
 
-    axs[-1].set_xlabel('Generation (t)')
+        axs[i][1].hist(first_distro[i], bins=32, density=True)
+        axs[i][1].hist(last_distro[i], bins=32, density=True)
+
+    axs[-1][0].set_xlabel('Generation (t)')
 
     fig.set_size_inches(8, 8)
+
+    plt.tight_layout()
 
     if save is not None:
         pdf_out.savefig()
@@ -261,10 +270,11 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     abc_data, __ = abc_history.get_distribution(m=0,
                                                 t=abc_history.max_t)
 
-    parameters = ['s', 'c', 'w', 'n']
+    parameters = ['s', 'c', 'w', 'n', 'm', 'r']
     params = {k: np.median(abc_data[k]) for k in parameters}
 
-    f_rate = Rate(params['s'], params['c'], params['w'], 0, 1)
+    f_rate_1 = Rate(params['s'], params['c'], params['w'], 0, params['m'])
+    f_rate_2 = Rate(params['s'], params['c'], params['w'], 0, params['m']*params['r'])
     f_noise = Noise(params['n'])
 
     x_width = simtools.PARAMS['parameter_range'][1] - \
@@ -272,7 +282,8 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     x_axis = np.linspace(-x_width/2, x_width/2, simtools.PARAMS['parameter_points'])
 
     fig, axs = plt.subplots(ncols=2)
-    axs[0].plot(x_axis, f_rate(x_axis))
+    axs[0].plot(x_axis, f_rate_1(x_axis))
+    axs[0].plot(x_axis, f_rate_2(x_axis))
     axs[1].plot(x_axis, f_noise(x_axis))
 
     fig.set_size_inches(8, 5)
@@ -289,9 +300,9 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
 
     sim = {}
     f_rate_up = Rate(params['s'], params['c'], params['w'],
-                     simtools.PARAMS['optimum_treatment'], 1)
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
     f_rate_down = Rate(params['s'], params['c'], params['w'],
-                       simtools.PARAMS['optimum_normal'], 1)
+                       simtools.PARAMS['optimum_normal'], params['m'])
 
     parameter_range = simtools.PARAMS['parameter_range'][1] - \
                       simtools.PARAMS['parameter_range'][0]
@@ -405,16 +416,16 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
 
     abc_data, __ = abc_history.get_distribution(m=0, t=abc_history.max_t)
 
-    parameters = ['s', 'c', 'w', 'n']
+    parameters = ['s', 'c', 'w', 'n', 'm', 'r']
     params = {k: np.median(abc_data[k]) for k in parameters}
 
     f_noise = Noise(params['n'])
     simtools.PARAMS = toml.load(paramfile)
 
     f_rate_up = Rate(params['s'], params['c'], params['w'],
-                     simtools.PARAMS['optimum_treatment'], 1)
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['m'])
     f_rate_down = Rate(params['s'], params['c'], params['w'],
-                       simtools.PARAMS['optimum_normal'], 1)
+                       simtools.PARAMS['optimum_normal'], params['m'])
 
     f_initial = simtools.get_stationary_distribution_function(
         f_rate_down,
@@ -453,6 +464,8 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
     simtools.PARAMS['mpi_rate_function_width'] = params['w']
     simtools.PARAMS['mpi_rate_function_center'] = params['c']
     simtools.PARAMS['mpi_rate_function_shape'] = params['s']
+    simtools.PARAMS['mpi_rate_function_max'] = params['m']
+    simtools.PARAMS['mpi_rate_function_ratio'] = params['r']
 
     with open(paramfile, 'w') as params_toml:
         toml.dump(simtools.PARAMS, params_toml)
