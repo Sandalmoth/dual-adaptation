@@ -572,7 +572,8 @@ def mpiout(paramfile, outfile, save):
 
     time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
                                        simtools.PARAMS['time_points_up'])
-    escaped_sum = np.sum(gp_result['escaped'], axis=1) / \
+
+    escaped_sum = np.sum(gp_result['escaped'], axis=0) / \
                   simtools.PARAMS['mpi_simulations_per_time_point']
 
     axs.plot(time_axis, escaped_sum, color='lightgrey', linewidth='0.5')
@@ -600,8 +601,8 @@ def mpiout(paramfile, outfile, save):
     colors = ['grey', 'black', 'grey', 'lightgrey']
 
     for i in range(escaped.shape[1]):
-        death_times = time[i, :][escaped[i, :] == 0]
-        escaped_times = time[i, :][escaped[i, :] == 1]
+        death_times = time[:, i][escaped[:, i] == 0]
+        escaped_times = time[:, i][escaped[:, i] == 1]
         q_death = np.percentile(death_times, (25, 50, 75, 95))
         q_escaped = np.percentile(escaped_times, (25, 50, 75, 95))
         for j in range(4):

@@ -17,7 +17,7 @@
 #include "dual_adaptation_process.h"
 
 
-std::string VERSION = "0.1.1";
+std::string VERSION = "0.1.2";
 
 
 const bool RESULT_ESCAPED_FILL = false;
@@ -79,6 +79,9 @@ struct Parameters {
   double rate_function_center;
   double rate_function_shape;
   double rate_function_width;
+  double rate_function_max;
+  double rate_function_ratio;
+  double rate_function_optimum_normal;
   std::vector<long> rng_seeds;
 };
 
@@ -224,6 +227,12 @@ int main(int argc, char** argv) {
       parameters_toml->get_as<double>("mpi_rate_function_shape").value_or(-1);
     parameters.rate_function_width =
       parameters_toml->get_as<double>("mpi_rate_function_width").value_or(-1);
+    parameters.rate_function_max =
+      parameters_toml->get_as<double>("mpi_rate_function_max").value_or(-1);
+    parameters.rate_function_ratio =
+      parameters_toml->get_as<double>("mpi_rate_function_ratio").value_or(-1);
+    parameters.rate_function_optimum_normal =
+      parameters_toml->get_as<double>("optimum_normal").value_or(-1);
     auto seeds = parameters_toml->get_array_of<long>("mpi_rng_seeds");
     parameters.rng_seeds.assign(seeds->begin(), seeds->end());
 
@@ -250,6 +259,9 @@ int main(int argc, char** argv) {
   MPI_Bcast(&parameters.rate_function_center, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_shape, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_width, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&parameters.rate_function_max, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&parameters.rate_function_ratio, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&parameters.rate_function_optimum_normal, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   { // reduce scope of some variables
     size_t num_seeds;
     if (world_rank == 0)
@@ -284,7 +296,8 @@ int main(int argc, char** argv) {
   RateBeta rate(parameters.rate_function_shape,
                 parameters.rate_function_center,
                 parameters.rate_function_width,
-                0.0, 1.0);
+                parameters.rate_function_optimum_normal,
+                parameters.rate_function_max);
 
   // Allocate enough space for results from this mpi process
   bool* result_escaped = new bool[parameters.simulations_per_time_point*parameters.time_points/world_size];
