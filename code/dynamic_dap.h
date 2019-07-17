@@ -1,5 +1,5 @@
-#ifndef __DUAL_ADAPTATION_PROCESS_H__
-#define __DUAL_ADAPTATION_PROCESS_H__
+#ifndef DYNAMIC_DAP_H
+#define DYNAMIC_DAP_H
 
 
 #include <cstddef>
@@ -9,33 +9,60 @@
 #include <vector>
 #include <utility>
 
+#include <iostream>
+
 
 template <typename TRate>
-class DAP {
+class DDAP {
 private:
   TRate rate; // functor implementing operator()(double) -> double
   std::mt19937& rng;
 
-  double death_rate = 0.0;
+  const double* death_rate = nullptr;
+  double death_rate_end_time = 0.0;
+  size_t death_rate_points;
   double noise_sigma = 0.0;
 
   std::vector<double> cells;
 
 
+  double interpolate(double x, double x1, double x2, double y1, double y2) {
+    // standard linear interpolation
+    return y1 + (x - x1)*(y2 - y1)/(x2 - x1);
+  }
+
+  double get_death_rate(double time) {
+    // death rate is time-dependent, and we have a discrete vector
+    // interpolation into future is done by keeping last value
+    if (time >= death_rate_end_time)
+      return death_rate[death_rate_points - 1];
+
+    // linear interpolation between closest points
+    double dt = death_rate_end_time/static_cast<double>(death_rate_points);
+    size_t t = static_cast<size_t>(time/dt);
+    double t0 = t*dt;
+    double t1 = (t + 1)*dt;
+    return interpolate(time, t0, t1, death_rate[t], death_rate[t + 1]);
+  }
+
+
 public:
-  DAP (TRate rate, std::mt19937& rng)
+  DDAP (TRate rate, std::mt19937& rng)
     : rate(rate)
     , rng(rng) { }
 
-
-  void set_death_rate(double dr) { death_rate = dr; }
+  void set_death_rate(const double* dr, double t_end, size_t n) {
+    death_rate = dr;
+    death_rate_end_time = t_end;
+    death_rate_points = n;
+  }
 
   void set_noise_sigma(double s) { noise_sigma = s; }
 
   void add_cell (double parameter) { cells.push_back(parameter); }
 
 
-  auto simulate(size_t n_end, double t_end) {
+  auto simulate(size_t n_end, double t_end, double t_start) {
 
     // simulate with gillespies algorithm until
     // we reach n_end cells total
@@ -60,7 +87,9 @@ public:
     while (cells.size() > 0 && cells.size() < n_end && time < t_end) {
 
       // advance time depending on total event rate (birth or death)
-      double total_rate = total_growth_rate + cells.size()*death_rate;
+      // use midpoint method for getting the time dependent death rate
+      double total_rate = total_growth_rate + cells.size()*get_death_rate(time + t_start);
+      total_rate = total_growth_rate + cells.size()*get_death_rate(time + t_start + 1.0/total_rate);
 
       time += std::exponential_distribution<double>(total_rate)(rng);
 
@@ -84,6 +113,7 @@ public:
         // Produce a new cell as a mutant of the old one
         double new_cell = cells[event_cell] + noise(rng);
         double new_cell_rate = rate(new_cell);
+
         // maintain running growth rate sum
         total_growth_rate += new_cell_rate;
         // add to list

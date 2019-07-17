@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 from pyabc import History
+from scipy.integrate import simps
 from scipy.interpolate import PchipInterpolator as pchip
 import toml
 
@@ -423,7 +424,7 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
     simtools.PARAMS = toml.load(paramfile)
 
     f_rate_up = Rate(params['s'], params['c'], params['w'],
-                     simtools.PARAMS['optimum_treatment'], params['m']*params['m'])
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
     f_rate_down = Rate(params['s'], params['c'], params['w'],
                        simtools.PARAMS['optimum_normal'], params['m'])
 
@@ -451,6 +452,11 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
                                                               f_rate_up, f_noise,
                                                               simtools.PARAMS['parameter_range'])
 
+    # find growth rate at each point in time
+    growth_rate = np.zeros(shape=time_axis.shape)
+    for i in range(parameter_density.shape[1]):
+        growth_rate[i] = simps(parameter_density[:, i]*f_rate_up(parameter_axis), x=parameter_axis)
+
     # write parameter density hdf5
     out = h5py.File(outfile, 'w')
     gp_pd = out.create_group('parameter_density')
@@ -458,6 +464,7 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
     gp_pd['parameter_axis'] = parameter_axis
     # gp_pd['parameter_density'] = parameter_density
     gp_pd['parameter_density'] = child_density
+    gp_pd['growth_rate'] = growth_rate
 
     # write rate function data to simulation config toml
     simtools.PARAMS['mpi_noise_function_sigma'] = params['n']
@@ -466,6 +473,7 @@ def generate_dataset(paramfile, dbfile, outfile, history_id):
     simtools.PARAMS['mpi_rate_function_shape'] = params['s']
     simtools.PARAMS['mpi_rate_function_max'] = params['m']
     simtools.PARAMS['mpi_rate_function_ratio'] = params['r']
+    simtools.PARAMS['mpi_death_rate'] = growth_rate[-1]
 
     with open(paramfile, 'w') as params_toml:
         toml.dump(simtools.PARAMS, params_toml)
@@ -514,7 +522,11 @@ def plot_dataset(infile, save):
     axs.grid()
 
     plt.tight_layout()
-    plt.show()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
 
     # child density first vs last
     fig, axs = plt.subplots()
@@ -525,8 +537,23 @@ def plot_dataset(infile, save):
     axs.set_xlabel('Time')
     axs.set_ylabel('Parameter density')
     axs.legend()
+
     plt.tight_layout()
-    plt.show()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    # growth rate over time
+    growth_rate = np.array(gp_pd['growth_rate'])
+    fig, axs = plt.subplots()
+    fig.set_size_inches(4, 3)
+    axs.plot(time_axis, growth_rate, color='k', linewidth=1.0)
+    axs.set_xlabel('Time')
+    axs.set_ylabel('Growth rate')
+
+    plt.tight_layout()
 
     if save is not None:
         pdf_out.savefig()
@@ -604,7 +631,7 @@ def mpiout(paramfile, outfile, save):
         death_times = time[:, i][escaped[:, i] == 0]
         escaped_times = time[:, i][escaped[:, i] == 1]
         q_death = np.percentile(death_times, (25, 50, 75, 95))
-        q_escaped = np.percentile(escaped_times, (25, 50, 75, 95))
+        q_escaped = np.percentile(escaped_times, (25, 50, 75, 95)) if escaped_times.size != 0 else (None, None, None, None)
         for j in range(4):
             quantiles_death[j].append(q_death[j])
             quantiles_escaped[j].append(q_escaped[j])
@@ -648,7 +675,7 @@ def mpiout(paramfile, outfile, save):
                 range=(0, np.percentile(time[escaped == 0], 99)), bins=100,
                 density=True)
     axs[1].hist(time[escaped == 1], color='lightgrey',
-                range=(0, np.percentile(time[escaped == 1], 99)), bins=100,
+                range=(0, np.percentile(time[escaped == 1], 99) if escaped_times.size != 0 else 1), bins=100,
                 density=True)
 
     x0 = np.linspace(0, np.percentile(time[escaped == 0], 99), 100)
