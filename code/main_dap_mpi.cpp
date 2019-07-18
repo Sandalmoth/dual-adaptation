@@ -18,7 +18,7 @@
 #include "dynamic_dap.h"
 
 
-std::string VERSION = "0.1.2";
+std::string VERSION = "0.2.0";
 
 
 const bool RESULT_ESCAPED_FILL = false;
@@ -339,7 +339,8 @@ int main(int argc, char** argv) {
       std::piecewise_linear_distribution<double>
         parameter_distribution(parameter_axis,
                                parameter_axis + parameters.parameter_points,
-                               parameter_density + parameters.parameter_points*i*world_size + world_rank);
+                               parameter_density + parameters.parameter_points*i +
+                               world_rank*parameters.parameter_points*parameters.time_points/world_size);
 
       for (size_t j = 0; j < parameters.simulations_per_time_point; ++j) {
 
