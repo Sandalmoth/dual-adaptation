@@ -3,6 +3,7 @@
 
 
 #include <cstddef>
+#include <iostream>
 #include <numeric>
 #include <random>
 #include <tuple>
@@ -24,6 +25,15 @@ private:
 
   std::vector<double> cells;
 
+  double get_parameter_mean() {
+    return std::accumulate(cells.begin(), cells.end(), 0.0)/static_cast<double>(cells.size());
+  }
+
+  double get_parameter_stdev(double mean) {
+    return sqrt(std::accumulate(cells.begin, cells.end(), [&](double sum, double parameter){
+          return sum + (mean - parameter)*(mean - parameter);
+        })/(static_cast<double>(cells.size() - 1)));
+  }
 
 public:
   SDAP (TRate rate, std::mt19937& rng)
@@ -35,10 +45,10 @@ public:
   void add_cell (double parameter) { cells.push_back(parameter); }
 
 
-  auto simulate(size_t n_end, double t_end) {
+  auto simulate(const double* time_axis, size_t time_points, double* result_mean, double* result_stdev) {
 
     // simulate with gillespies algorithm until
-    // we reach n_end cells total
+    // we have a measure for each point in time_axis
 
     std::normal_distribution<double> noise(0.0, noise_sigma);
 
@@ -57,12 +67,23 @@ public:
     double time = 0;
     size_t max_cells = cells.size();
 
-    while (cells.size() > 0 && cells.size() < n_end && time < t_end) {
+    size_t t_point = 0;
+
+    while (t_point < time_points) {
 
       // advance time depending on total event rate (birth or death)
       double total_rate = total_growth_rate;
 
       time += std::exponential_distribution<double>(total_rate)(rng);
+
+      // if we passed the current time in time_axis, record data
+      // we might have skipped several time points,
+      // keep saving values until we are caught up
+      while (time > time_axis[t_point]) {
+        result_mean[t_point] = get_parameter_mean();
+        result_stdev[t_point] = get_parameter_stdev(result_mean[t_point]);
+        ++t_point;
+      }
 
       // select event cell proportional to birth rates
       int event_cell = 0;
@@ -106,8 +127,7 @@ public:
 
     }
 
-    // return if we reach n_end cells, the time it took, and the greatest number of cells reached
-    return std::make_tuple(cells.size() == n_end, time, max_cells);
+    // return nothing, as the result was written directly to memory pointers
   }
 
 };

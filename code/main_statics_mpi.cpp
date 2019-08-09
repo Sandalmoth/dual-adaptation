@@ -18,7 +18,10 @@
 #include "logistic_dap.h"
 
 
-std::string VERSION = "0.0.0";
+const std::string VERSION = "0.0.0";
+
+const double RESULT_MEAN_FILL = 0.0;
+const double RESULT_STDEV_FILL = 0.0;
 
 
 struct RateBeta {
@@ -321,13 +324,13 @@ int main(int argc, char** argv) {
   RateBeta rate_up(parameters.rate_function_shape,
                    parameters.rate_function_center,
                    parameters.rate_function_width,
-                   parameters.rate_function_optimum_normal,
-                   parameters.rate_function_max);
+                   parameters.rate_function_optimum_treatment,
+                   parameters.rate_function_max*parameters.rate_function_ratio);
   RateBeta rate_down(parameters.rate_function_shape,
                      parameters.rate_function_center,
                      parameters.rate_function_width,
-                     parameters.rate_function_optimum_treatment,
-                     parameters.rate_function_max*parameters.rate_function_ratio);
+                     parameters.rate_function_optimum_normal,
+                     parameters.rate_function_max);
 
   // Allocate enough space for results from this mpi process
   double* result_mean_up = new double[parameters.number_of_simulations*parameters.time_points_up/world_size];
@@ -349,47 +352,48 @@ int main(int argc, char** argv) {
     std::seed_seq rng_seed(seeds.begin(), seeds.end());
     rng.seed(rng_seed);
 
-    // Simulate over a time segment of the parameters density
+    // Set up parameter distribution for simulations
+    std::piecewise_linear_distribution<double>
+      parameter_distribution_up(parameter_axis,
+                                parameter_axis + parameters.parameter_points,
+                                parameter_density_up);
+    std::piecewise_linear_distribution<double>
+      parameter_distribution_down(parameter_axis,
+                                parameter_axis + parameters.parameter_points,
+                                parameter_density_down);
+
 #pragma omp for schedule(static)
     for (size_t i = 0; i < parameters.number_of_simulations/world_size; ++i) {
 
-      // Set up parameter distribution for simulations at this time
-      std::piecewise_linear_distribution<double>
-        parameter_distribution(parameter_axis,
-                               parameter_axis + parameters.parameter_points,
-                               parameter_density + parameters.parameter_points*i +
-                               world_rank*parameters.parameter_points*parameters.time_points/world_size);
-
-      for (size_t j = 0; j < parameters.simulations_per_time_point; ++j) {
-
-        if (parameters.variable_death_rate) {
-          // simulate using a variable death rate (dynamic dap)
-          DDAP<RateBeta> ddap(rate, rng);
-          ddap.set_death_rate(death_rate, time_axis[parameters.time_points - 1], parameters.time_points);
-          ddap.set_noise_sigma(parameters.noise_function_sigma);
-          double first_parameter = parameter_distribution(rng);
-          ddap.add_cell(first_parameter);
-          auto result = ddap.simulate(parameters.max_population_size, parameters.max_time,
-                                      time_axis[i + world_rank*parameters.time_points/world_size]);
-          // save result
-          result_escaped[i*parameters.simulations_per_time_point + j] = std::get<0>(result);
-          result_time[i*parameters.simulations_per_time_point + j] = std::get<1>(result);
-          result_max_cells[i*parameters.simulations_per_time_point + j] = std::get<2>(result);
-          result_first_parameter[i*parameters.simulations_per_time_point + j] = first_parameter;
-        } else {
-          // simulate with a static death rate (dap)
-          DAP<RateBeta> dap(rate, rng);
-          dap.set_death_rate(parameters.death_rate);
-          dap.set_noise_sigma(parameters.noise_function_sigma);
-          double first_parameter = parameter_distribution(rng);
-          dap.add_cell(first_parameter);
-          auto result = dap.simulate(parameters.max_population_size, parameters.max_time);
-          // save result
-          result_escaped[i*parameters.simulations_per_time_point + j] = std::get<0>(result);
-          result_time[i*parameters.simulations_per_time_point + j] = std::get<1>(result);
-          result_max_cells[i*parameters.simulations_per_time_point + j] = std::get<2>(result);
-          result_first_parameter[i*parameters.simulations_per_time_point + j] = first_parameter;
+      // TODO Consider using polymorphism to reduce code repetition
+      switch (arguments.mode) {
+      case MODE::STATIC:
+        {
+          SDAP<RateBeta> sdap_up(rate_up, rng);
+          sdap_up.set_noise_sigma(parameters.noise_function_sigma);
+          for (size_t j = 0; j < parameters.population_size; ++j) {
+            double first_parameter = parameter_distribution_up(rng);
+            sdap_up.add_cell(first_parameter);
+          }
+          sdap_up.simulate(time_axis_up, parameters.time_points_up,
+                        result_mean_up + parameters.time_points_up*i,
+                        result_stdev_up + parameters.time_points_up*i);
+          SDAP<RateBeta> sdap_down(rate_down, rng);
+          sdap_down.set_noise_sigma(parameters.noise_function_sigma);
+          for (size_t j = 0; j < parameters.population_size; ++j) {
+            double first_parameter = parameter_distribution_down(rng);
+            sdap_down.add_cell(first_parameter);
+          }
+          sdap_down.simulate(time_axis_down, parameters.time_points_down,
+                           result_mean_down + parameters.time_points_down*i,
+                           result_stdev_down + parameters.time_points_down*i);
         }
+        break;
+      case MODE::LOGISTIC:
+        break;
+      default:
+        std::cerr << "Unknown mode. Set a mode with -m" << std::endl;
+        return 1;
       }
     }
   } // end omp segment
@@ -402,31 +406,37 @@ int main(int argc, char** argv) {
   // TODO use parallel HDF5? maybe h5cpp library?
   if (world_rank == 0) {
     // one process creates the file and sets up the datasets
+    // TODO abstract into function
     H5::H5File outfile(arguments.outfile, H5F_ACC_TRUNC);
     H5::Group gp_result = outfile.createGroup("result");
-    hsize_t dims[2] = {parameters.simulations_per_time_point, parameters.time_points};
-    H5::DataSpace sp(2, dims);
-    H5::DSetCreatPropList pl_escaped;
-    H5::DSetCreatPropList pl_time;
-    H5::DSetCreatPropList pl_max_cells;
-    H5::DSetCreatPropList pl_first_parameter;
-    pl_escaped.setFillValue(H5::PredType::NATIVE_HBOOL, &RESULT_ESCAPED_FILL);
-    pl_time.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_TIME_FILL);
-    pl_max_cells.setFillValue(H5::PredType::NATIVE_INT, &RESULT_MAX_CELLS_FILL);
-    pl_first_parameter.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_FIRST_PARAMETER_FILL);
-    pl_escaped.setDeflate(5);
-    pl_time.setDeflate(5);
-    pl_max_cells.setDeflate(5);
-    pl_first_parameter.setDeflate(5);
-    hsize_t chunk_dims[2] {parameters.simulations_per_time_point, 1};
-    pl_escaped.setChunk(2, chunk_dims);
-    pl_time.setChunk(2, chunk_dims);
-    pl_max_cells.setChunk(2, chunk_dims);
-    pl_first_parameter.setChunk(2, chunk_dims);
-    gp_result.createDataSet("escaped", H5::PredType::NATIVE_HBOOL, sp, pl_escaped);
-    gp_result.createDataSet("time", H5::PredType::NATIVE_DOUBLE, sp, pl_time);
-    gp_result.createDataSet("max_cells", H5::PredType::NATIVE_INT, sp, pl_max_cells);
-    gp_result.createDataSet("first_parameter", H5::PredType::NATIVE_DOUBLE, sp, pl_first_parameter);
+    hsize_t dims_up[2] = {parameters.time_points_up, parameters.number_of_simulations};
+    H5::DataSpace sp_up(2, dims_up);
+    H5::DSetCreatPropList pl_mean_up;
+    H5::DSetCreatPropList pl_stdev_up;
+    pl_mean_up.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_MEAN_FILL);
+    pl_stdev_up.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_STDEV_FILL);
+    pl_mean_up.setDeflate(5);
+    pl_stdev_up.setDeflate(5);
+    hsize_t chunk_dims_up[2] {parameters.time_points_up,
+        parameters.number_of_simulations/world_size/parameters.cores_per_node};
+    pl_mean_up.setChunk(2, chunk_dims_up);
+    pl_stdev_up.setChunk(2, chunk_dims_up);
+    gp_result.createDataSet("mean_up", H5::PredType::NATIVE_DOUBLE, sp_up, pl_mean_up);
+    gp_result.createDataSet("stdev_up", H5::PredType::NATIVE_DOUBLE, sp_up, pl_stdev_up);
+    hsize_t dims_down[2] = {parameters.time_points_down, parameters.number_of_simulations};
+    H5::DataSpace sp_down(2, dims_down);
+    H5::DSetCreatPropList pl_mean_down;
+    H5::DSetCreatPropList pl_stdev_down;
+    pl_mean_down.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_MEAN_FILL);
+    pl_stdev_down.setFillValue(H5::PredType::NATIVE_DOUBLE, &RESULT_STDEV_FILL);
+    pl_mean_down.setDeflate(5);
+    pl_stdev_down.setDeflate(5);
+    hsize_t chunk_dims_down[2] {parameters.time_points_down,
+        parameters.number_of_simulations/world_size/parameters.cores_per_node};
+    pl_mean_down.setChunk(2, chunk_dims_down);
+    pl_stdev_down.setChunk(2, chunk_dims_down);
+    gp_result.createDataSet("mean_down", H5::PredType::NATIVE_DOUBLE, sp_down, pl_mean_down);
+    gp_result.createDataSet("stdev_down", H5::PredType::NATIVE_DOUBLE, sp_down, pl_stdev_down);
   }
 
   if (world_rank == 0 && arguments.verbosity)
