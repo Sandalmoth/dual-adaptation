@@ -30,7 +30,7 @@ private:
   }
 
   double get_parameter_stdev(double mean) {
-    return sqrt(std::accumulate(cells.begin, cells.end(), [&](double sum, double parameter){
+    return sqrt(std::accumulate(cells.begin(), cells.end(), 0.0, [&](auto sum, auto parameter){
           return sum + (mean - parameter)*(mean - parameter);
         })/(static_cast<double>(cells.size() - 1)));
   }
@@ -83,6 +83,9 @@ public:
         result_mean[t_point] = get_parameter_mean();
         result_stdev[t_point] = get_parameter_stdev(result_mean[t_point]);
         ++t_point;
+        if (t_point ==  time_points) {
+          break;
+        }
       }
 
       // select event cell proportional to birth rates

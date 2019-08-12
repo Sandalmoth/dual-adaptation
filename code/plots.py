@@ -404,7 +404,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
 @click.option('-b', '--dbfile', type=click.Path())
 @click.option('-o', '--outfile', type=click.Path())
 @click.option('-i', '--history-id', type=int, default=1)
-def generate_dataset(paramfile, dbfile, outfile, history_id):
+def generate_dataset_mpi(paramfile, dbfile, outfile, history_id):
     """
     Generate a field using the pde for further c++ mpi simulation
     """
@@ -760,6 +760,91 @@ def mpiout(paramfile, outfile, save):
 
 
 
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-b', '--dbfile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+@click.option('-i', '--history-id', type=int, default=1)
+def generate_dataset_verify(paramfile, dbfile, outfile, history_id):
+    """
+    Generate a field using the pde for further c++ mpi simulation
+    """
+
+    db_path = 'sqlite:///' + dbfile
+    abc_history = History(db_path)
+    abc_history.id = history_id
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    abc_data, __ = abc_history.get_distribution(m=0, t=abc_history.max_t)
+
+    parameters = ['s', 'c', 'w', 'n', 'm', 'r']
+    params = {k: np.median(abc_data[k]) for k in parameters}
+
+    f_noise = Noise(params['n'])
+    simtools.PARAMS = toml.load(paramfile)
+
+    f_rate_up = Rate(params['s'], params['c'], params['w'],
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
+    f_rate_down = Rate(params['s'], params['c'], params['w'],
+                       simtools.PARAMS['optimum_normal'], params['m'])
+
+    f_initial_up = simtools.get_stationary_distribution_function(
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    f_initial_down = simtools.get_stationary_distribution_function(
+        f_rate_up,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+
+    time_axis_up, parameter_axis_up, __ = simtools.simulate_pde(
+        f_initial_up,
+        f_rate_up,
+        f_noise,
+        simtools.PARAMS['time_range_up'][1],
+        simtools.PARAMS['time_points_up'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    time_axis_down, parameter_axis_down, __ = simtools.simulate_pde(
+        f_initial_down,
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['time_range_down'][1],
+        simtools.PARAMS['time_points_down'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    assert all(parameter_axis_up == parameter_axis_down)
+
+    # write parameter density hdf5
+    out = h5py.File(outfile, 'w')
+    gp_pd = out.create_group('parameter_density')
+    gp_pd['time_axis_up'] = time_axis_up
+    gp_pd['time_axis_down'] = time_axis_down
+    gp_pd['parameter_axis'] = parameter_axis_up
+    gp_pd['parameter_density_up'] = f_initial_up(parameter_axis_up)
+    gp_pd['parameter_density_down'] = f_initial_down(parameter_axis_up)
+
+    # write rate function data to simulation config toml
+    simtools.PARAMS['mpi_noise_function_sigma'] = params['n']
+    simtools.PARAMS['mpi_rate_function_width'] = params['w']
+    simtools.PARAMS['mpi_rate_function_center'] = params['c']
+    simtools.PARAMS['mpi_rate_function_shape'] = params['s']
+    simtools.PARAMS['mpi_rate_function_max'] = params['m']
+    simtools.PARAMS['mpi_rate_function_ratio'] = params['r']
+
+    with open(paramfile, 'w') as params_toml:
+        toml.dump(simtools.PARAMS, params_toml)
 
 if __name__ == '__main__':
     main()

@@ -230,15 +230,15 @@ int main(int argc, char** argv) {
     parameters.parameter_points =
       parameters_toml->get_as<size_t>("parameter_points").value_or(-1);
     parameters.number_of_simulations =
-      parameters_toml->get_as<size_t>("mpi_number_of_simulations").value_or(-1);
+      parameters_toml->get_as<size_t>("mpi_statics_number_of_simulations").value_or(-1);
     parameters.cores_per_node =
       parameters_toml->get_as<size_t>("mpi_cores_per_node").value_or(-1);
     parameters.population_size =
-      parameters_toml->get_as<size_t>("mpi_population_size").value_or(-1);
+      parameters_toml->get_as<size_t>("mpi_statics_population_size").value_or(-1);
     parameters.death_rate =
       parameters_toml->get_as<double>("mpi_death_rate").value_or(-1);
     parameters.interaction_death_rate =
-      parameters_toml->get_as<double>("mpi_interaction_death_rate").value_or(-1);
+      parameters_toml->get_as<double>("mpi_statics_interaction_death_rate").value_or(-1);
     parameters.max_time =
       parameters_toml->get_as<double>("mpi_max_time").value_or(-1);
     parameters.noise_function_sigma =
@@ -289,19 +289,24 @@ int main(int argc, char** argv) {
   MPI_Bcast(&parameters.rate_function_ratio, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_optimum_normal, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   { // reduce scope of some variables
-    size_t num_seeds;
-    if (world_rank == 0)
+    int num_seeds;
+    if (world_rank == 0) {
       num_seeds = parameters.rng_seeds.size();
+    }
     MPI_Bcast(&num_seeds, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    if (world_rank != 0)
+    if (world_rank != 0) {
       parameters.rng_seeds.resize(num_seeds);
+    }
     MPI_Bcast(parameters.rng_seeds.data(), num_seeds, MPI_LONG, 0, MPI_COMM_WORLD);
   }
 
   // Processes that aren't rank 0 and didn't load from file need to allocate space
   if (world_rank != 0) {
+    std::cout << parameters.time_points_up << ' '
+              << parameters.time_points_down << ' '
+              << parameters.parameter_points << std::endl;
     time_axis_up = new double[parameters.time_points_up];
-    time_axis_down = new double[parameters.time_points_up];
+    time_axis_down = new double[parameters.time_points_down];
     parameter_axis = new double[parameters.parameter_points];
     parameter_density_up = new double[parameters.parameter_points];
     parameter_density_down = new double[parameters.parameter_points];
@@ -312,6 +317,8 @@ int main(int argc, char** argv) {
   MPI_Bcast(parameter_axis, parameters.parameter_points, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(parameter_density_up, parameters.parameter_points, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(parameter_density_down, parameters.parameter_points, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  MPI_Barrier(MPI_COMM_WORLD);
 
   if (world_rank == 0 && arguments.verbosity)
     std::cout << total_timer() << "\tSuccessfully broadcasted input data" << std::endl;
@@ -364,6 +371,7 @@ int main(int argc, char** argv) {
 
 #pragma omp for schedule(static)
     for (size_t i = 0; i < parameters.number_of_simulations/world_size; ++i) {
+      std::cout << world_rank << ':' << thread_rank << " begin " << i << std::endl;
 
       // TODO Consider using polymorphism to reduce code repetition
       switch (arguments.mode) {
@@ -376,8 +384,8 @@ int main(int argc, char** argv) {
             sdap_up.add_cell(first_parameter);
           }
           sdap_up.simulate(time_axis_up, parameters.time_points_up,
-                        result_mean_up + parameters.time_points_up*i,
-                        result_stdev_up + parameters.time_points_up*i);
+                           result_mean_up + parameters.time_points_up*i,
+                           result_stdev_up + parameters.time_points_up*i);
           SDAP<RateBeta> sdap_down(rate_down, rng);
           sdap_down.set_noise_sigma(parameters.noise_function_sigma);
           for (size_t j = 0; j < parameters.population_size; ++j) {
@@ -388,15 +396,23 @@ int main(int argc, char** argv) {
                            result_mean_down + parameters.time_points_down*i,
                            result_stdev_down + parameters.time_points_down*i);
         }
+        std::cout << world_rank << ':' << thread_rank << " end " << i << std::endl;
         break;
       case MODE::LOGISTIC:
         break;
       default:
         std::cerr << "Unknown mode. Set a mode with -m" << std::endl;
-        return 1;
+        break;
       }
     }
   } // end omp segment
+
+  for (size_t i = 0; i < parameters.number_of_simulations; ++i) {
+    std::cout << result_mean_up[i*parameters.time_points_up] << ' ';
+    std::cout << result_stdev_up[i*parameters.time_points_up] << ' ';
+    std::cout << result_mean_down[i*parameters.time_points_down] << ' ';
+    std::cout << result_stdev_down[i*parameters.time_points_down] << std::endl;
+  }
 
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -452,33 +468,43 @@ int main(int argc, char** argv) {
 
         H5::H5File outfile(arguments.outfile, H5F_ACC_RDWR);
         H5::Group gp_result = outfile.openGroup("result");
-        H5::DataSet ds_escaped = gp_result.openDataSet("escaped");
-        H5::DataSet ds_time = gp_result.openDataSet("time");
-        H5::DataSet ds_max_cells = gp_result.openDataSet("max_cells");
-        H5::DataSet ds_first_parameter = gp_result.openDataSet("first_parameter");
-        H5::DataSpace sp_escaped = ds_escaped.getSpace();
-        H5::DataSpace sp_time = ds_time.getSpace();
-        H5::DataSpace sp_max_cells = ds_max_cells.getSpace();
-        H5::DataSpace sp_first_parameter = ds_first_parameter.getSpace();
-        // write one time point at a time
-        for (size_t j = 0; j < parameters.time_points/world_size; ++j) {
+        H5::DataSet ds_mean_up = gp_result.openDataSet("mean_up");
+        H5::DataSet ds_stdev_up = gp_result.openDataSet("stdev_up");
+        H5::DataSet ds_mean_down = gp_result.openDataSet("mean_down");
+        H5::DataSet ds_stdev_down = gp_result.openDataSet("stdev_down");
+        H5::DataSpace sp_mean_up = ds_mean_up.getSpace();
+        H5::DataSpace sp_stdev_up = ds_stdev_up.getSpace();
+        H5::DataSpace sp_mean_down = ds_mean_down.getSpace();
+        H5::DataSpace sp_stdev_down = ds_stdev_down.getSpace();
+        for (size_t j = 0; j < parameters.number_of_simulations/world_size; ++j) {
           {
-            hsize_t start[2] {0, world_rank*parameters.time_points/world_size + j};
-            hsize_t count[2] {parameters.simulations_per_time_point, 1};
-            sp_escaped.selectHyperslab(H5S_SELECT_SET, count, start);
-            sp_time.selectHyperslab(H5S_SELECT_SET, count, start);
-            sp_max_cells.selectHyperslab(H5S_SELECT_SET, count, start);
-            sp_first_parameter.selectHyperslab(H5S_SELECT_SET, count, start);
+            hsize_t start[2] {0, world_rank*parameters.time_points_up/world_size + j};
+            hsize_t count[2] {parameters.time_points_up, 1};
+            sp_mean_up.selectHyperslab(H5S_SELECT_SET, count, start);
+            sp_stdev_up.selectHyperslab(H5S_SELECT_SET, count, start);
           }
-          hsize_t dims_mem[1] = {parameters.simulations_per_time_point*parameters.time_points/world_size};
-          hsize_t start[1] = {j*parameters.simulations_per_time_point};
-          hsize_t count[1] = {parameters.simulations_per_time_point};
+          hsize_t dims_mem[1] = {parameters.number_of_simulations*parameters.time_points_up/world_size};
+          hsize_t start[1] = {j*parameters.time_points_up};
+          hsize_t count[1] = {parameters.time_points_up};
           H5::DataSpace sp_mem(1, dims_mem);
           sp_mem.selectHyperslab(H5S_SELECT_SET, count, start);
-          ds_escaped.write(result_escaped, H5::PredType::NATIVE_HBOOL, sp_mem, sp_escaped);
-          ds_time.write(result_time, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_time);
-          ds_max_cells.write(result_max_cells, H5::PredType::NATIVE_INT, sp_mem, sp_max_cells);
-          ds_first_parameter.write(result_first_parameter, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_first_parameter);
+          ds_mean_up.write(result_mean_up, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_mean_up);
+          ds_stdev_up.write(result_stdev_up, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_stdev_up);
+        }
+        for (size_t j = 0; j < parameters.number_of_simulations/world_size; ++j) {
+          {
+            hsize_t start[2] {0, world_rank*parameters.number_of_simulations/world_size + j};
+            hsize_t count[2] {parameters.time_points_down, 1};
+            sp_mean_down.selectHyperslab(H5S_SELECT_SET, count, start);
+            sp_stdev_down.selectHyperslab(H5S_SELECT_SET, count, start);
+          }
+          hsize_t dims_mem[1] = {parameters.number_of_simulations*parameters.time_points_down/world_size};
+          hsize_t start[1] = {j*parameters.time_points_down};
+          hsize_t count[1] = {parameters.time_points_down};
+          H5::DataSpace sp_mem(1, dims_mem);
+          sp_mem.selectHyperslab(H5S_SELECT_SET, count, start);
+          ds_mean_down.write(result_mean_down, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_mean_down);
+          ds_stdev_down.write(result_stdev_down, H5::PredType::NATIVE_DOUBLE, sp_mem, sp_stdev_down);
         }
       }
       MPI_Barrier(MPI_COMM_WORLD);
@@ -496,16 +522,15 @@ int main(int argc, char** argv) {
     std::cout << total_timer() << "\tWrote result" << std::endl;
 
   // Free dynamic memory
-  delete time_axis;
+  delete time_axis_up;
+  delete time_axis_down;
   delete parameter_axis;
   delete parameter_density_up;
   delete parameter_density_down;
-  delete death_rate;
-  delete interaction_death_rate;
-  delete result_escaped;
-  delete result_time;
-  delete result_max_cells;
-  delete result_first_parameter;
+  delete result_mean_up;
+  delete result_stdev_up;
+  delete result_mean_down;
+  delete result_stdev_down;
 
   MPI_Finalize();
 
