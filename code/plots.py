@@ -767,7 +767,7 @@ def mpiout(paramfile, outfile, save):
 @click.option('-i', '--history-id', type=int, default=1)
 def generate_dataset_verify(paramfile, dbfile, outfile, history_id):
     """
-    Generate a field using the pde for further c++ mpi simulation
+    Generate start and end distribution for c++ mpi verification simulations
     """
 
     db_path = 'sqlite:///' + dbfile
@@ -845,6 +845,95 @@ def generate_dataset_verify(paramfile, dbfile, outfile, history_id):
 
     with open(paramfile, 'w') as params_toml:
         toml.dump(simtools.PARAMS, params_toml)
+
+
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-i', '--infile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+def verification_plots(paramfile, infile, outfile):
+    """
+    plot comparing exact verification data to pde solution
+    """
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    params = {}
+
+    params['n'] = simtools.PARAMS['mpi_noise_function_sigma']
+    params['w'] = simtools.PARAMS['mpi_rate_function_width']
+    params['c'] = simtools.PARAMS['mpi_rate_function_center']
+    params['s'] = simtools.PARAMS['mpi_rate_function_shape']
+    params['m'] = simtools.PARAMS['mpi_rate_function_max']
+    params['r'] = simtools.PARAMS['mpi_rate_function_ratio']
+
+    f_noise = Noise(params['n'])
+
+    f_rate_up = Rate(params['s'], params['c'], params['w'],
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
+    f_rate_down = Rate(params['s'], params['c'], params['w'],
+                       simtools.PARAMS['optimum_normal'], params['m'])
+
+    f_initial_up = simtools.get_stationary_distribution_function(
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    f_initial_down = simtools.get_stationary_distribution_function(
+        f_rate_up,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    time_axis_up, parameter_axis_up, parameter_density_up = simtools.simulate_pde(
+        f_initial_up,
+        f_rate_up,
+        f_noise,
+        simtools.PARAMS['time_range_up'][1],
+        simtools.PARAMS['time_points_up'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    time_axis_down, parameter_axis_down, parameter_density_down = simtools.simulate_pde(
+        f_initial_down,
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['time_range_down'][1],
+        simtools.PARAMS['time_points_down'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    data = h5py.File(outfile, 'r')
+    gp_result = data['result']
+
+    # plot of mean over time pde vs exact
+    fig, axs = plt.subplots(ncols=2)
+    fig.set_size_inches(6, 3)
+
+    for i in range(simtools.PARAMS['mpi_statics_number_of_simulations']):
+        axs[0].plot(gp_result['mean_up'][:, i], color='k', linewidth=1.0, alpha=0.2)
+        axs[1].plot(gp_result['mean_down'][:, i], color='k', linewidth=1.0, alpha=0.2)
+    axs[0].plot([np.sum(parameter_density_up[:, i]*parameter_axis_up)/simtools.PARAMS['time_points_up']
+                 for i in range(simtools.PARAMS['time_points_up'])],
+                color='r', linewidth=2.0)
+    axs[1].plot([np.sum(parameter_density_down[:, i]*parameter_axis_down)/simtools.PARAMS['time_points_down']
+                 for i in range(simtools.PARAMS['time_points_down'])],
+                color='r', linewidth=2.0)
+
+    for i in range(2):
+        axs[i].set_xlabel('Time')
+        axs[i].set_ylabel('Mean $x$')
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 if __name__ == '__main__':
     main()

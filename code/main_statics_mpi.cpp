@@ -478,7 +478,7 @@ int main(int argc, char** argv) {
         H5::DataSpace sp_stdev_down = ds_stdev_down.getSpace();
         for (size_t j = 0; j < parameters.number_of_simulations/world_size; ++j) {
           {
-            hsize_t start[2] {0, world_rank*parameters.time_points_up/world_size + j};
+            hsize_t start[2] {0, world_rank*parameters.number_of_simulations/world_size + j};
             hsize_t count[2] {parameters.time_points_up, 1};
             sp_mean_up.selectHyperslab(H5S_SELECT_SET, count, start);
             sp_stdev_up.selectHyperslab(H5S_SELECT_SET, count, start);
