@@ -908,26 +908,118 @@ def verification_plots(paramfile, infile, outfile):
         simtools.PARAMS['parameter_points']
     )
 
+    def lr(x):
+        return x[1] - x[0]
+
     data = h5py.File(outfile, 'r')
     gp_result = data['result']
 
+    inpt = h5py.File(infile, 'r')
+    gp_input = inpt['parameter_density']
+
+    # plot of expected density (pde)
+    fig, axs = plt.subplots(ncols=3)
+    fig.set_size_inches(6, 2)
+
+    img = axs[0].imshow(
+        np.transpose(parameter_density_up),
+        extent=(np.min(parameter_axis_up), np.max(parameter_axis_up),
+                np.min(time_axis_up), np.max(time_axis_up)),
+        aspect=lr(parameter_axis_up)/lr(time_axis_up),
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+
+    # cbr = fig.colorbar(img, ax=axs, fraction=0.046, pad=0.04)
+    # cbr.set_label('Parameter density', labelpad=-15)
+    # cbr.set_ticks([np.min(parameter_density_up), np.max(parameter_density_up)])
+    # cbr.set_ticklabels(['Low', 'High'])
+
+    axs[0].set_ylabel('Time')
+    axs[0].set_xlabel('Parameter')
+    # axs[0].grid()
+
+    axs[1].plot(gp_input['parameter_axis'][:], gp_input['parameter_density_up'][:],
+                label='Starting density (up)', color='k', linewidth=1.0)
+    axs[1].plot(gp_input['parameter_axis'][:], gp_input['parameter_density_down'][:],
+                label='Starting density (down)', color='k', linewidth=1.0, linestyle='--')
+
+    axs[1].set_xlabel('Parameter ($x$)')
+    axs[1].set_ylabel('Parameter density')
+
+    img = axs[2].imshow(
+        np.transpose(parameter_density_down),
+        extent=(np.min(parameter_axis_down), np.max(parameter_axis_down),
+                np.min(time_axis_down), np.max(time_axis_down)),
+        aspect=lr(parameter_axis_down)/lr(time_axis_down),
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+
+    # cbr = fig.colorbar(img, ax=axs, fraction=0.046, pad=0.04)
+    # cbr.set_label('Parameter density', labelpad=-15)
+    # cbr.set_ticks([np.min(parameter_density_down), np.max(parameter_density_down)])
+    # cbr.set_ticklabels(['Low', 'High'])
+
+    axs[2].set_ylabel('Time')
+    axs[2].set_xlabel('Parameter')
+    # axs[2].grid()
+
+
+    plt.tight_layout()
+    plt.show()
+
+    # define some shorthand names for upcoming calculations
+    parameter_range = lr(simtools.PARAMS['parameter_range'])
+    time_points_up = simtools.PARAMS['time_points_up']
+    pdu = parameter_density_up
+    pau = parameter_axis_up
+    time_points_down = simtools.PARAMS['time_points_down']
+    pdd = parameter_density_down
+    pad = parameter_axis_down
+
     # plot of mean over time pde vs exact
-    fig, axs = plt.subplots(ncols=2)
-    fig.set_size_inches(6, 3)
+    fig, axs = plt.subplots(ncols=2, nrows=2)
+    fig.set_size_inches(6, 6)
 
     for i in range(simtools.PARAMS['mpi_statics_number_of_simulations']):
-        axs[0].plot(gp_result['mean_up'][:, i], color='k', linewidth=1.0, alpha=0.2)
-        axs[1].plot(gp_result['mean_down'][:, i], color='k', linewidth=1.0, alpha=0.2)
-    axs[0].plot([np.sum(parameter_density_up[:, i]*parameter_axis_up)/simtools.PARAMS['time_points_up']
-                 for i in range(simtools.PARAMS['time_points_up'])],
-                color='r', linewidth=2.0)
-    axs[1].plot([np.sum(parameter_density_down[:, i]*parameter_axis_down)/simtools.PARAMS['time_points_down']
-                 for i in range(simtools.PARAMS['time_points_down'])],
-                color='r', linewidth=2.0)
+        axs[0][0].plot(
+            gp_input['time_axis_up'][:], gp_result['mean_up'][:, i], color='k', linewidth=1.0, alpha=0.2)
+        axs[1][0].plot(
+            gp_input['time_axis_down'][:], gp_result['mean_down'][:, i], color='k', linewidth=1.0, alpha=0.2)
+    axs[0][0].plot(time_axis_up, [np.sum(pdu[:, i]*pau)/pau.size*parameter_range
+                                  for i in range(time_points_up)],
+                   color='r', linewidth=2.0)
+    axs[1][0].plot(time_axis_down, [np.sum(pdd[:, i]*pad)/pad.size*parameter_range
+                                    for i in range(time_points_down)],
+                   color='r', linewidth=2.0)
 
     for i in range(2):
-        axs[i].set_xlabel('Time')
-        axs[i].set_ylabel('Mean $x$')
+        axs[i][0].set_xlabel('Time')
+        axs[i][0].set_ylabel('Mean $x$')
+
+    for i in range(simtools.PARAMS['mpi_statics_number_of_simulations']):
+        axs[0][1].plot(
+            gp_input['time_axis_up'][:], gp_result['stdev_up'][:, i], color='k', linewidth=1.0, alpha=0.2)
+        axs[1][1].plot(
+            gp_input['time_axis_down'][:], gp_result['stdev_down'][:, i], color='k', linewidth=1.0, alpha=0.2)
+    axs[0][1].plot(
+        time_axis_up,
+        [np.sqrt(np.sum(pdu[:, i]*pau**2)/pau.size*parameter_range - \
+                 (np.sum(pdu[:, i]*pau)/pau.size*parameter_range)**2)
+         for i in range(time_points_up)],
+        color='r', linewidth=2.0)
+    axs[1][1].plot(
+        time_axis_down,
+        [np.sqrt(np.sum(pdd[:, i]*pad**2)/pad.size*parameter_range - \
+                 (np.sum(pdd[:, i]*pad)/pad.size*parameter_range)**2)
+         for i in range(time_points_down)],
+        color='r', linewidth=2.0)
+
+
+    for i in range(2):
+        axs[i][1].set_xlabel('Time')
+        axs[i][1].set_ylabel('Mean $x$')
 
     plt.tight_layout()
     plt.show()
