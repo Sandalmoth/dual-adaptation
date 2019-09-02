@@ -395,6 +395,30 @@ int main(int argc, char** argv) {
         }
         break;
       case MODE::LOGISTIC:
+        {
+          LDAP<RateBeta> ldap_up(rate_up, rng);
+          ldap_up.set_noise_sigma(parameters.noise_function_sigma);
+          ldap_up.set_death_rate(0.0);
+          ldap_up.set_interaction_death_rate(parameters.interaction_death_rate);
+          for (size_t j = 0; j < parameters.population_size; ++j) {
+            double first_parameter = parameter_distribution_up(rng);
+            ldap_up.add_cell(first_parameter);
+          }
+          ldap_up.simulate(time_axis_up, parameters.time_points_up,
+                           result_mean_up + parameters.time_points_up*i,
+                           result_stdev_up + parameters.time_points_up*i);
+          LDAP<RateBeta> ldap_down(rate_down, rng);
+          ldap_down.set_noise_sigma(parameters.noise_function_sigma);
+          ldap_down.set_death_rate(0.0);
+          ldap_down.set_interaction_death_rate(parameters.interaction_death_rate);
+          for (size_t j = 0; j < parameters.population_size; ++j) {
+            double first_parameter = parameter_distribution_down(rng);
+            ldap_down.add_cell(first_parameter);
+          }
+          ldap_down.simulate(time_axis_down, parameters.time_points_down,
+                           result_mean_down + parameters.time_points_down*i,
+                           result_stdev_down + parameters.time_points_down*i);
+        }
         break;
       default:
         std::cerr << "Unknown mode. Set a mode with -m" << std::endl;

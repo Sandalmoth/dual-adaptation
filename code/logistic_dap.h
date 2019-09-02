@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <numeric>
 #include <random>
-#include <tuple>
 #include <vector>
 #include <utility>
 
@@ -28,6 +27,15 @@ private:
 
   std::vector<double> cells;
 
+  double get_parameter_mean() {
+    return std::accumulate(cells.begin(), cells.end(), 0.0)/static_cast<double>(cells.size());
+  }
+
+  double get_parameter_stdev(double mean) {
+    return sqrt(std::accumulate(cells.begin(), cells.end(), 0.0, [&](auto sum, auto parameter){
+          return sum + (mean - parameter)*(mean - parameter);
+        })/(static_cast<double>(cells.size() - 1)));
+  }
 
 public:
   LDAP (TRate rate, std::mt19937& rng)
@@ -37,14 +45,14 @@ public:
 
   void set_death_rate(double dr) { death_rate = dr; }
 
-  void set_interaction_death_rate(double dr) { interaction_death_rate = dr; }
+  void set_interaction_death_rate(double idr) { interaction_death_rate = idr; }
 
   void set_noise_sigma(double s) { noise_sigma = s; }
 
   void add_cell (double parameter) { cells.push_back(parameter); }
 
 
-  auto simulate(size_t n_end, double t_end) {
+  auto simulate(const double* time_axis, size_t time_points, double* result_mean, double* result_stdev) {
 
     // simulate with gillespies algorithm until
     // we reach n_end cells total
@@ -66,15 +74,29 @@ public:
     double time = 0;
     size_t max_cells = cells.size();
 
-    while (cells.size() > 0 && cells.size() < n_end && time < t_end) {
+    size_t t_point = 0;
+
+    while (t_point < time_points) {
 
       // logistic total death rate
-      double total_death_rate = cells.size()*(death_rate + cells.size()*interaction_death_rate);
+      double total_death_rate = cells.size()*(death_rate + (cells.size() - 1)*interaction_death_rate);
 
       // advance time depending on total event rate (birth or death)
       double total_rate = total_growth_rate + total_death_rate;
 
       time += std::exponential_distribution<double>(total_rate)(rng);
+
+      // if we passed the current time in time_axis, record data
+      // we might have skipped several time points,
+      // keep saving values until we are caught up
+      while (time > time_axis[t_point]) {
+        result_mean[t_point] = get_parameter_mean();
+        result_stdev[t_point] = get_parameter_stdev(result_mean[t_point]);
+        ++t_point;
+        if (t_point ==  time_points) {
+          break;
+        }
+      }
 
       // select a birth or death event
       if (std::uniform_real_distribution<double>(0, total_rate)(rng) < total_growth_rate) {
@@ -127,8 +149,7 @@ public:
 
     }
 
-    // return if we reach n_end cells, the time it took, and the greatest number of cells reached
-    return std::make_tuple(cells.size() == n_end, time, max_cells);
+    // return nothing, as the result was written directly to memory pointers
   }
 
 };
