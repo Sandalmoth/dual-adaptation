@@ -895,7 +895,8 @@ def verification_plots(paramfile, infile, outfile):
         simtools.PARAMS['time_range_up'][1],
         simtools.PARAMS['time_points_up'],
         simtools.PARAMS['parameter_range'],
-        simtools.PARAMS['parameter_points']
+        simtools.PARAMS['parameter_points'],
+        convolve_method='fft'
     )
 
     time_axis_down, parameter_axis_down, parameter_density_down = simtools.simulate_pde(
@@ -905,7 +906,8 @@ def verification_plots(paramfile, infile, outfile):
         simtools.PARAMS['time_range_down'][1],
         simtools.PARAMS['time_points_down'],
         simtools.PARAMS['parameter_range'],
-        simtools.PARAMS['parameter_points']
+        simtools.PARAMS['parameter_points'],
+        convolve_method='fft'
     )
 
     def lr(x):

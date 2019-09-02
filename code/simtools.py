@@ -80,10 +80,10 @@ def simulate_pde(f_initial, f_rate, f_noise, t_end, t_points, x_view, x_points, 
     # solve
     for i in range(1, t_points):
         dxh = convolve_method(rate*mesh[:, i-1],
-                          noise, mode='same') / (x_points/lr(x_range)) - \
+                          noise, mode='same') / (x_points_full/lr(x_range)) - \
                           mesh[:, i-1] * simps(rate*mesh[:, i-1], x=x)
         xh = mesh[:, i-1] + dxh*k/2
-        dx = convolve_method(rate*xh, noise, mode='same') / (x_points/lr(x_range)) - \
+        dx = convolve_method(rate*xh, noise, mode='same') / (x_points_full/lr(x_range)) - \
                          xh * simps(rate*xh, x=x)
         mesh[:, i] = mesh[:, i-1] + dx*k
 

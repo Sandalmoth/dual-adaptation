@@ -72,8 +72,7 @@ public:
     while (t_point < time_points) {
 
       // advance time depending on total event rate (birth or death)
-      // double rate since we always do a birth and death event at the same time
-      double total_rate = 2*total_growth_rate;
+      double total_rate = total_growth_rate;
 
       time += std::exponential_distribution<double>(total_rate)(rng);
 
