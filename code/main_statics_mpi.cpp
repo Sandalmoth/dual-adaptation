@@ -303,9 +303,6 @@ int main(int argc, char** argv) {
 
   // Processes that aren't rank 0 and didn't load from file need to allocate space
   if (world_rank != 0) {
-    std::cout << parameters.time_points_up << ' '
-              << parameters.time_points_down << ' '
-              << parameters.parameter_points << std::endl;
     time_axis_up = new double[parameters.time_points_up];
     time_axis_down = new double[parameters.time_points_down];
     parameter_axis = new double[parameters.parameter_points];
@@ -372,7 +369,6 @@ int main(int argc, char** argv) {
 
 #pragma omp for schedule(static)
     for (size_t i = 0; i < parameters.number_of_simulations/world_size; ++i) {
-      std::cout << world_rank << ':' << thread_rank << " begin " << i << std::endl;
 
       // TODO Consider using polymorphism to reduce code repetition
       switch (arguments.mode) {
@@ -397,7 +393,6 @@ int main(int argc, char** argv) {
                            result_mean_down + parameters.time_points_down*i,
                            result_stdev_down + parameters.time_points_down*i);
         }
-        std::cout << world_rank << ':' << thread_rank << " end " << i << std::endl;
         break;
       case MODE::LOGISTIC:
         break;
@@ -407,13 +402,6 @@ int main(int argc, char** argv) {
       }
     }
   } // end omp segment
-
-  for (size_t i = 0; i < parameters.number_of_simulations; ++i) {
-    std::cout << result_mean_up[i*parameters.time_points_up] << ' ';
-    std::cout << result_stdev_up[i*parameters.time_points_up] << ' ';
-    std::cout << result_mean_down[i*parameters.time_points_down] << ' ';
-    std::cout << result_stdev_down[i*parameters.time_points_down] << std::endl;
-  }
 
   MPI_Barrier(MPI_COMM_WORLD);
 

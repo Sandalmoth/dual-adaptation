@@ -918,10 +918,10 @@ def verification_plots(paramfile, infile, outfile):
     gp_input = inpt['parameter_density']
 
     # plot of expected density (pde)
-    fig, axs = plt.subplots(ncols=3)
-    fig.set_size_inches(6, 2)
+    fig, axs = plt.subplots(ncols=2, nrows=2)
+    fig.set_size_inches(6, 5)
 
-    img = axs[0].imshow(
+    img = axs[0][0].imshow(
         np.transpose(parameter_density_up),
         extent=(np.min(parameter_axis_up), np.max(parameter_axis_up),
                 np.min(time_axis_up), np.max(time_axis_up)),
@@ -935,19 +935,11 @@ def verification_plots(paramfile, infile, outfile):
     # cbr.set_ticks([np.min(parameter_density_up), np.max(parameter_density_up)])
     # cbr.set_ticklabels(['Low', 'High'])
 
-    axs[0].set_ylabel('Time')
-    axs[0].set_xlabel('Parameter')
+    axs[0][0].set_ylabel('Time')
+    axs[0][0].set_xlabel('Parameter')
     # axs[0].grid()
 
-    axs[1].plot(gp_input['parameter_axis'][:], gp_input['parameter_density_up'][:],
-                label='Starting density (up)', color='k', linewidth=1.0)
-    axs[1].plot(gp_input['parameter_axis'][:], gp_input['parameter_density_down'][:],
-                label='Starting density (down)', color='k', linewidth=1.0, linestyle='--')
-
-    axs[1].set_xlabel('Parameter ($x$)')
-    axs[1].set_ylabel('Parameter density')
-
-    img = axs[2].imshow(
+    img = axs[0][1].imshow(
         np.transpose(parameter_density_down),
         extent=(np.min(parameter_axis_down), np.max(parameter_axis_down),
                 np.min(time_axis_down), np.max(time_axis_down)),
@@ -961,10 +953,19 @@ def verification_plots(paramfile, infile, outfile):
     # cbr.set_ticks([np.min(parameter_density_down), np.max(parameter_density_down)])
     # cbr.set_ticklabels(['Low', 'High'])
 
-    axs[2].set_ylabel('Time')
-    axs[2].set_xlabel('Parameter')
-    # axs[2].grid()
+    axs[0][1].set_ylabel('Time')
+    axs[0][1].set_xlabel('Parameter')
+    # axs[0][1].grid()
 
+    axs[1][0].plot(gp_input['parameter_axis'][:], gp_input['parameter_density_up'][:],
+                label='Starting density (up)', color='k', linewidth=1.0)
+    axs[1][1].plot(gp_input['parameter_axis'][:], gp_input['parameter_density_down'][:],
+                label='Starting density (down)', color='k', linewidth=1.0)
+
+    axs[1][0].set_xlabel('Parameter ($x$)')
+    axs[1][0].set_ylabel('Parameter density (up)')
+    axs[1][1].set_xlabel('Parameter ($x$)')
+    axs[1][1].set_ylabel('Parameter density (down)')
 
     plt.tight_layout()
     plt.show()
