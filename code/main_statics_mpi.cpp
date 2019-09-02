@@ -288,6 +288,7 @@ int main(int argc, char** argv) {
   MPI_Bcast(&parameters.rate_function_max, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_ratio, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(&parameters.rate_function_optimum_normal, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&parameters.rate_function_optimum_treatment, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   { // reduce scope of some variables
     int num_seeds;
     if (world_rank == 0) {
