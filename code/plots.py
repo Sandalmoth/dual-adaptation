@@ -142,7 +142,7 @@ class Observation:
 @click.group()
 def main():
     """
-    main construct for click to function in self-contained file
+    Plotting and data generation tools
     """
     pass
 
@@ -274,20 +274,26 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     parameters = ['s', 'c', 'w', 'n', 'm', 'r']
     params = {k: np.median(abc_data[k]) for k in parameters}
 
-    f_rate_1 = Rate(params['s'], params['c'], params['w'], 0, params['m'])
-    f_rate_2 = Rate(params['s'], params['c'], params['w'], 0, params['m']*params['r'])
+    f_rate_1 = Rate(params['s'], params['c'], params['w'], simtools.PARAMS['optimum_normal'], params['m'])
+    f_rate_2 = Rate(params['s'], params['c'], params['w'], simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
     f_noise = Noise(params['n'])
 
-    x_width = simtools.PARAMS['parameter_range'][1] - \
-              simtools.PARAMS['parameter_range'][0]
-    x_axis = np.linspace(-x_width/2, x_width/2, simtools.PARAMS['parameter_points'])
+    # x_width = simtools.PARAMS['parameter_range'][1] - \
+    #           simtools.PARAMS['parameter_range'][0]
+    # x_axis = np.linspace(-x_width/2, x_width/2, simtools.PARAMS['parameter_points'])
+    x_axis = np.linspace(*simtools.PARAMS['parameter_range'], simtools.PARAMS['parameter_points'])
 
     fig, axs = plt.subplots(ncols=2)
-    axs[0].plot(x_axis, f_rate_1(x_axis))
-    axs[0].plot(x_axis, f_rate_2(x_axis))
+    axs[0].plot(x_axis, f_rate_1(x_axis), color='k', linestyle='-', linewidth='1.0', label='Mutant or untreated normal cell')
+    axs[0].plot(x_axis, f_rate_2(x_axis), color='k', linestyle='--', linewidth='1.0', label='Normal cell with treatment')
     axs[1].plot(x_axis, f_noise(x_axis))
 
-    fig.set_size_inches(8, 5)
+    axs[0].legend()
+    axs[0].set_xlabel('$x$')
+    axs[0].set_ylabel('$\lambda(x)$')
+    axs[0].set_ylim(axs[0].get_ylim()[0], axs[0].get_ylim()[1]*1.2)
+
+    fig.set_size_inches(8, 4)
     plt.tight_layout()
 
     if save is not None:
@@ -567,13 +573,13 @@ def plot_dataset(infile, save):
 
 def moving_mean(vector, window):
     """
-    Calculate moving median of array-like object
+    Calculate moving mean of array-like object
     """
     extent = (window - 1) / 2
     average = []
     for i, __ in enumerate(vector):
         imin = int(i - extent) if i - extent > 0 else 0
-        imax = int(i + extent + 1) if i + extent < len(vector) else len(vector)
+        imax = int(i + extent + 1) if i + extent + 1 < len(vector) else len(vector)
         sample = sorted(vector[imin:imax])
         average.append(sum(sample) / len(sample))
     return np.array(average)
@@ -581,12 +587,16 @@ def moving_mean(vector, window):
 
 @main.command()
 @click.option('-p', '--paramfile', type=click.Path())
+@click.option('-i', '--infile', type=click.Path())
 @click.option('-o', '--outfile', type=click.Path())
 @click.option('--save', type=click.Path(), default=None)
-def mpiout(paramfile, outfile, save):
+def mpiout(paramfile, infile, outfile, save):
 
     data = h5py.File(outfile, 'r')
     gp_result = data['result']
+
+    indata = h5py.File(infile, 'r')
+    gp_input = indata['parameter_density']
 
     simtools.PARAMS = toml.load(paramfile)
 
@@ -608,6 +618,41 @@ def mpiout(paramfile, outfile, save):
     axs.set_xlabel('Time of mutation')
     axs.set_ylabel('Probability of a mutant reaching ' + \
                    str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # mutation vulnerability as a function of time of mutation
+    fig, axs = plt.subplots()
+
+    time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                                       simtools.PARAMS['time_points_up'])
+
+    escaped_sum = np.sum(gp_result['escaped'], axis=0) / \
+                  simtools.PARAMS['mpi_simulations_per_time_point']
+
+    growth_rate = gp_input['growth_rate']
+
+    axs.plot(time_axis, escaped_sum*growth_rate, color='lightgrey', linewidth='0.5')
+    axs.plot(time_axis, moving_mean(escaped_sum*growth_rate, 101), color='k',
+             linewidth='1.0', label='Mutation risk')
+    axs_cum = axs.twinx()
+    axs_cum.plot(time_axis, np.cumsum(escaped_sum*growth_rate), color='k',
+                 linestyle='--', linewidth='1.0')
+    # empty curve drawn on first axis for legend purposes
+    axs.plot([], [], color='k',
+             linewidth='1.0', linestyle='--', label='Cumulative mutation risk')
+    axs.set_xlabel('Time of mutation')
+
+    axs.set_ylim(0, axs.get_ylim()[1])
+    axs.set_yticks([0])
+    axs_cum.set_ylim(0, axs_cum.get_ylim()[1])
+    axs_cum.set_yticks([0])
+
+    axs.legend()
 
     if save is not None:
         pdf_out.savefig()
@@ -697,22 +742,22 @@ def mpiout(paramfile, outfile, save):
 
 
     # histogram of max # cells in populations that did not escape
-    fig, axs = plt.subplots()
-    fig.set_size_inches(4, 4)
+    # fig, axs = plt.subplots()
+    # fig.set_size_inches(4, 4)
 
-    max_cells = np.array(gp_result['max_cells'])
+    # max_cells = np.array(gp_result['max_cells'])
 
-    axs.hist(max_cells[escaped == 0], color='k',
-                range=(0.5, 5.5), bins=5)
-    axs.set_xlabel('Maximum number of cells achieved')
-    axs.set_ylabel('Frequency')
+    # axs.hist(max_cells[escaped == 0], color='k',
+    #             range=(0.5, 5.5), bins=5)
+    # axs.set_xlabel('Maximum number of cells achieved')
+    # axs.set_ylabel('Frequency')
 
-    plt.tight_layout()
+    # plt.tight_layout()
 
-    if save is not None:
-        pdf_out.savefig()
-    else:
-        plt.show()
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+    #     plt.show()
 
 
     # histogram of first parameter in dead/escaped lines
