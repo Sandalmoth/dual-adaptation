@@ -267,7 +267,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
         pdf_out = PdfPages(save)
 
 
-    ### PLOT OF RATE AND NOISE FUNCTION ###
+    ### PLOT OF RATE###
     abc_data, __ = abc_history.get_distribution(m=0,
                                                 t=abc_history.max_t)
 
@@ -283,17 +283,16 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     # x_axis = np.linspace(-x_width/2, x_width/2, simtools.PARAMS['parameter_points'])
     x_axis = np.linspace(*simtools.PARAMS['parameter_range'], simtools.PARAMS['parameter_points'])
 
-    fig, axs = plt.subplots(ncols=2)
-    axs[0].plot(x_axis, f_rate_1(x_axis), color='k', linestyle='-', linewidth='1.0', label='Mutant or untreated normal cell')
-    axs[0].plot(x_axis, f_rate_2(x_axis), color='k', linestyle='--', linewidth='1.0', label='Normal cell with treatment')
-    axs[1].plot(x_axis, f_noise(x_axis))
+    fig, axs = plt.subplots()
+    axs.plot(x_axis, f_rate_1(x_axis), color='k', linestyle='-', linewidth='1.0', label='Mutant or untreated normal cell')
+    axs.plot(x_axis, f_rate_2(x_axis), color='k', linestyle='--', linewidth='1.0', label='Normal cell with treatment')
 
-    axs[0].legend()
-    axs[0].set_xlabel('$x$')
-    axs[0].set_ylabel('$\lambda(x)$')
-    axs[0].set_ylim(axs[0].get_ylim()[0], axs[0].get_ylim()[1]*1.2)
+    axs.legend(frameon=False)
+    axs.set_xlabel('$x$')
+    axs.set_ylabel('$\lambda(x)$')
+    axs.set_ylim(axs.get_ylim()[0], axs.get_ylim()[1]*1.2)
 
-    fig.set_size_inches(8, 4)
+    fig.set_size_inches(3.8, 3.8)
     plt.tight_layout()
 
     if save is not None:
