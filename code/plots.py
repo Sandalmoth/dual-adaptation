@@ -400,6 +400,118 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     else:
         plt.show()
 
+    ### HEATMAP OF RISE AND FALL WITH MEAN AND OBSERVATION ###
+    ### HORIZONTAL NICE VERSION ###
+
+    fig, axs = plt.subplots(ncols=2, sharey=True)
+
+    sim = {}
+    f_rate_up = Rate(params['s'], params['c'], params['w'],
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
+    f_rate_down = Rate(params['s'], params['c'], params['w'],
+                       simtools.PARAMS['optimum_normal'], params['m'])
+
+    parameter_range = simtools.PARAMS['parameter_range'][1] - \
+                      simtools.PARAMS['parameter_range'][0]
+
+    observation = Observation()
+    observation.parse_observations(obsfile_up, obsfile_down)
+    obs = observation.get_instance(
+        simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                               simtools.PARAMS['time_points_up']),
+        simtools.get_time_axis(simtools.PARAMS['time_range_down'][1],
+                               simtools.PARAMS['time_points_down'])
+    )
+
+    f_initial = simtools.get_stationary_distribution_function(
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    time_axis, parameter_axis, parameters = simtools.simulate_pde(
+        f_initial,
+        f_rate_up,
+        f_noise,
+        simtools.PARAMS['time_range_up'][1],
+        simtools.PARAMS['time_points_up'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points'],
+        simtools.PARAMS['abc_convolution_method']
+    )
+
+    sim['x_up'] = np.array(
+        [np.sum(parameters[:, i]*parameter_axis) / \
+         parameter_axis.size*parameter_range \
+         for i in range(parameters.shape[1])]
+    )
+    axs[0].plot(time_axis, sim['x_up'], color='k',
+                linewidth=1.0)
+    axs[0].imshow(
+        parameters,
+        aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
+        extent=[0, simtools.PARAMS['time_range_up'][1],
+                np.min(parameter_axis), np.max(parameter_axis)],
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+    axs[0].plot(time_axis, obs['x_up'], linewidth=1.0, color='k',
+                linestyle='--')
+
+    f_initial = simtools.get_stationary_distribution_function(
+        f_rate_up,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    time_axis, parameter_axis, parameters = simtools.simulate_pde(
+        f_initial,
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['time_range_down'][1],
+        simtools.PARAMS['time_points_down'],
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    sim['x_down'] = np.array(
+        [np.sum(parameters[:, i]*parameter_axis) / \
+         parameter_axis.size*parameter_range \
+         for i in range(parameters.shape[1])]
+    )
+    axs[1].plot(time_axis, sim['x_down'], color='k',
+                linewidth=1.0, label="Mean (Simulated)")
+    img = axs[1].imshow(
+        parameters,
+        aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
+        extent=[0, simtools.PARAMS['time_range_down'][1],
+                np.min(parameter_axis), np.max(parameter_axis)],
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+    axs[1].plot(time_axis, obs['x_down'], linewidth=1.0, color='k',
+                label="Mean (Hypothetical)", linestyle='--')
+
+    cbr = fig.colorbar(img, ax=axs[1], fraction=0.046, pad=0.04)
+    cbr.set_label('Parameter density', labelpad=-15)
+    cbr.set_ticks([np.min(parameters), np.max(parameters)])
+    cbr.set_ticklabels(['Low', 'High'])
+
+    axs[0].set_ylabel('$x$')
+    axs[0].set_xlabel('Time')
+    axs[1].set_xlabel('Time')
+
+    axs[1].legend(loc='center left', bbox_to_anchor=(1.6, 0.5), frameon=False)
+
+    fig.set_size_inches(6.2, 2.5)
+    plt.tight_layout()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
 
     if save is not None:
         pdf_out.close()
