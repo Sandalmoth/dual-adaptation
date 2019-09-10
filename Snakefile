@@ -53,3 +53,39 @@ rule verify:
             -m logistic \
             -o {output.logistic}
         """
+
+
+rule abc_diagnostic:
+    input:
+        up = "data/raw_internal/{upfile}.csv",
+        down = "data/raw_internal/{downfile}.csv",
+        db = "intermediate/{upfile}.{downfile}.db",
+    output:
+        "results/figures/{upfile}.{downfile}.abc-diagnostic.pdf"
+    shell:
+        """
+        python3 code/plots.py abcdiag \
+            -p simulation-config.toml \
+            -b {input.db} \
+            -u {input.up} \
+            -d {input.down} \
+            --save {output}
+        """
+
+
+rule abc_fit:
+    input:
+        up = "data/raw_internal/{upfile}.csv",
+        down = "data/raw_internal/{downfile}.csv",
+        db = "intermediate/{upfile}.{downfile}.db",
+    output:
+        "results/figures/{upfile}.{downfile}.abc-fit.pdf"
+    shell:
+        """
+        python3 code/plots.py abcfit \
+            -p simulation-config.toml \
+            -b {input.db} \
+            -u {input.up} \
+            -d {input.down} \
+            --save {output}
+        """
