@@ -685,12 +685,16 @@ def plot_dataset(infile, save):
 def moving_mean(vector, window):
     """
     Calculate moving mean of array-like object
+    Reduces window size near edges
     """
     extent = (window - 1) / 2
     average = []
     for i, __ in enumerate(vector):
-        imin = int(i - extent) if i - extent > 0 else 0
-        imax = int(i + extent + 1) if i + extent + 1 < len(vector) else len(vector)
+        local_extent = extent
+        while not (i - local_extent >= 0 and i + local_extent + 1 <= len(vector)):
+            local_extent -= 1
+        imin = int(i - local_extent) if i - local_extent > 0 else 0
+        imax = int(i + local_extent + 1) if i + local_extent + 1 < len(vector) else len(vector)
         sample = sorted(vector[imin:imax])
         average.append(sum(sample) / len(sample))
     return np.array(average)
@@ -770,6 +774,61 @@ def mpiout(paramfile, infile, outfile, save):
     else:
         plt.show()
 
+
+    # plot of growth rate, escape probability and mutation vulnerability all in one
+    fig, axs = plt.subplots()
+
+    time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                                       simtools.PARAMS['time_points_up'])
+
+    escaped_sum = np.sum(gp_result['escaped'], axis=0) / \
+                  simtools.PARAMS['mpi_simulations_per_time_point']
+
+    growth_rate = gp_input['growth_rate']
+
+    axs.plot(time_axis, escaped_sum, color='orange', linewidth='0.5', alpha=0.5)
+    axs.plot(time_axis, moving_mean(escaped_sum, 101), color='orange', linewidth='1.0')
+    axs_rate = axs.twinx()
+    axs_rate.plot(time_axis, growth_rate, color='blue', linewidth=1.0)
+    axs_risk = axs.twinx()
+    axs_risk.plot(time_axis, escaped_sum*growth_rate, color='lightgrey', linewidth='0.5')
+    axs_risk.plot(time_axis, moving_mean(escaped_sum*growth_rate, 101), color='k',
+             linewidth='1.0', label='Mutation risk')
+    axs_cum = axs.twinx()
+    axs_cum.plot(time_axis, np.cumsum(escaped_sum*growth_rate), color='k',
+                 linestyle='--', linewidth='1.0')
+
+    # empty curves drawn on first axis for legend purposes
+    axs.plot([], [], color='orange',
+             linewidth='1.0', linestyle='-', label='Probability of reaching ' + str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    axs.plot([], [], color='blue',
+             linewidth='1.0', linestyle='-', label='Normal cell average growth rate')
+    axs.plot([], [], color='k',
+             linewidth='1.0', linestyle='-', label='Mutation risk')
+    axs.plot([], [], color='k',
+             linewidth='1.0', linestyle='--', label='Cumulative mutation risk')
+
+    axs.set_ylabel('Probability of a mutant reaching ' + \
+                   str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    axs_rate.set_ylabel('Normal cell growth rate')
+    axs.set_xlabel('Time of mutation')
+
+    axs.set_ylim(0, axs.get_ylim()[1])
+    axs_rate.set_ylim(0, axs_rate.get_ylim()[1])
+    axs_risk.set_ylim(0, axs_risk.get_ylim()[1])
+    axs_risk.set_yticks([0])
+    axs_cum.set_ylim(0, axs_cum.get_ylim()[1])
+    axs_cum.set_yticks([0])
+
+    axs.legend(loc='lower right', frameon=False)
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # plot of growth rate, escape probability and mutation vulnerability all in one
 
     # death time and escape time distribution as a function of time of mutation
     fig, axs = plt.subplots(ncols=2)
