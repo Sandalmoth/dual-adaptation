@@ -1066,10 +1066,14 @@ def generate_dataset_verify(paramfile, dbfile, outfile, history_id):
 @click.option('-p', '--paramfile', type=click.Path())
 @click.option('-i', '--infile', type=click.Path())
 @click.option('-o', '--outfile', type=click.Path())
-def verification_plots(paramfile, infile, outfile):
+@click.option('--save', type=click.Path(), default=None)
+def verification_plots(paramfile, infile, outfile, save):
     """
     plot comparing exact verification data to pde solution
     """
+
+    if save is not None:
+        pdf_out = PdfPages(save)
 
     simtools.PARAMS = toml.load(paramfile)
 
@@ -1185,7 +1189,11 @@ def verification_plots(paramfile, infile, outfile):
     axs[1][1].set_ylabel('Parameter density (down)')
 
     plt.tight_layout()
-    plt.show()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
 
     # define some shorthand names for upcoming calculations
     parameter_range = lr(simtools.PARAMS['parameter_range'])
@@ -1240,9 +1248,172 @@ def verification_plots(paramfile, infile, outfile):
         axs[i][1].set_ylabel('Mean $x$')
 
     plt.tight_layout()
-    plt.show()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    if save is not None:
+        pdf_out.close()
 
 
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-b', '--dbfile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+@click.option('-i', '--history-id', type=int, default=1)
+def generate_dataset_holiday(paramfile, dbfile, outfile, history_id):
+    """
+    Generate a field using the pde for further c++ mpi simulation
+    """
+
+    db_path = 'sqlite:///' + dbfile
+    abc_history = History(db_path)
+    abc_history.id = history_id
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    abc_data, __ = abc_history.get_distribution(m=0, t=abc_history.max_t)
+
+    parameters = ['s', 'c', 'w', 'n', 'm', 'r']
+    params = {k: np.median(abc_data[k]) for k in parameters}
+
+    f_noise = Noise(params['n'])
+    simtools.PARAMS = toml.load(paramfile)
+
+    f_rate_up = Rate(params['s'], params['c'], params['w'],
+                     simtools.PARAMS['optimum_treatment'], params['m']*params['r'])
+    f_rate_down = Rate(params['s'], params['c'], params['w'],
+                       simtools.PARAMS['optimum_normal'], params['m'])
+
+    f_initial = simtools.get_stationary_distribution_function(
+        f_rate_down,
+        f_noise,
+        simtools.PARAMS['parameter_range'],
+        simtools.PARAMS['parameter_points']
+    )
+
+    # set up outfile
+    out = h5py.File(outfile, 'w')
+    gp_pd = out.create_group('parameter_density')
+
+    time_points_full = int(simtools.PARAMS['time_points_up']* \
+                           simtools.PARAMS['holiday_time_up_factor'])
+    holiday_times = []
+
+    for i in range(3, time_points_full, int(simtools.PARAMS['holiday_start_stride'])):
+        for j in range(3, int(simtools.PARAMS['time_points_up']* \
+                       simtools.PARAMS['holiday_duration_factor']),
+                       int(simtools.PARAMS['holiday_duration_stride'])):
+            if i + j > time_points_full - 3:
+                continue
+
+            holiday_times.append((i, j))
+
+            lead_length = i
+            holiday_length = j
+            tail_length = time_points_full - i - j
+            tail_length = max(0, tail_length)
+
+            time_range_lead = simtools.PARAMS['time_range_up'][1]*lead_length/ \
+                              simtools.PARAMS['time_points_up']
+            time_range_holiday = simtools.PARAMS['time_range_up'][1]*holiday_length/ \
+                                 simtools.PARAMS['time_points_up']
+            time_range_tail = simtools.PARAMS['time_range_up'][1]*tail_length/ \
+                              simtools.PARAMS['time_points_up']
+
+            time_axis_lead, parameter_axis_lead, parameter_density_lead = simtools.simulate_pde(
+                f_initial,
+                f_rate_up,
+                f_noise,
+                time_range_lead,
+                lead_length,
+                simtools.PARAMS['parameter_range'],
+                simtools.PARAMS['parameter_points']
+            )
+            time_axis_holiday, parameter_axis_holiday, parameter_density_holiday = simtools.simulate_pde(
+                simtools.distribution_to_function(parameter_axis_lead, parameter_density_lead[:, -1]),
+                f_rate_down,
+                f_noise,
+                time_range_holiday,
+                holiday_length,
+                simtools.PARAMS['parameter_range'],
+                simtools.PARAMS['parameter_points']
+            )
+            time_axis_tail, parameter_axis_tail, parameter_density_tail = simtools.simulate_pde(
+                simtools.distribution_to_function(parameter_axis_holiday, parameter_density_holiday[:, -1]),
+                f_rate_up,
+                f_noise,
+                time_range_tail,
+                tail_length,
+                simtools.PARAMS['parameter_range'],
+                simtools.PARAMS['parameter_points']
+            )
+
+            growth_rate_lead = np.zeros(shape=time_axis_lead.shape)
+            for k in range(parameter_density_lead.shape[1]):
+                growth_rate_lead[k] = simps(parameter_density_lead[:, k]*f_rate_up(parameter_axis_lead),
+                                            x=parameter_axis_lead)
+            growth_rate_holiday = np.zeros(shape=time_axis_holiday.shape)
+            for k in range(parameter_density_holiday.shape[1]):
+                growth_rate_holiday[k] = simps(parameter_density_holiday[:, k]*f_rate_down(parameter_axis_holiday),
+                                               x=parameter_axis_holiday)
+            growth_rate_tail = np.zeros(shape=time_axis_tail.shape)
+            for k in range(parameter_density_tail.shape[1]):
+                growth_rate_tail[k] = simps(parameter_density_tail[:, k]*f_rate_up(parameter_axis_tail),
+                                            x=parameter_axis_tail)
+
+            child_density_lead = np.zeros(shape=parameter_density_lead.shape)
+            for k in range(parameter_density_lead.shape[1]):
+                child_density_lead[:, k] = simtools.get_child_distribution(parameter_density_lead[:, k],
+                                                                      f_rate_up, f_noise,
+                                                                      simtools.PARAMS['parameter_range'])
+            child_density_holiday = np.zeros(shape=parameter_density_holiday.shape)
+            for k in range(parameter_density_holiday.shape[1]):
+                child_density_holiday[:, k] = simtools.get_child_distribution(parameter_density_holiday[:, k],
+                                                                      f_rate_down, f_noise,
+                                                                      simtools.PARAMS['parameter_range'])
+            child_density_tail = np.zeros(shape=parameter_density_tail.shape)
+            for k in range(parameter_density_tail.shape[1]):
+                child_density_tail[:, k] = simtools.get_child_distribution(parameter_density_tail[:, k],
+                                                                      f_rate_up, f_noise,
+                                                                      simtools.PARAMS['parameter_range'])
+
+            time_axis = np.concatenate([time_axis_lead,
+                                        time_axis_holiday + time_range_lead,
+                                        time_axis_tail + time_range_lead + time_range_holiday])
+            # time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1]* \
+            #                                    simtools.PARAMS['holiday_time_up_factor'], time_points_full) # same for all
+            parameter_axis = parameter_axis_lead # same for all
+            parameter_density = np.concatenate([parameter_density_lead,
+                                                parameter_density_holiday,
+                                                parameter_density_tail], axis=1)
+            growth_rate = np.concatenate([growth_rate_lead,
+                                          growth_rate_holiday,
+                                          growth_rate_tail])
+            child_density = np.concatenate([child_density_lead,
+                                            child_density_holiday,
+                                            child_density_tail], axis=1)
+
+    gp_pd['time_axis'] = time_axis
+    gp_pd['parameter_axis'] = parameter_axis
+    gp_pd['holiday_parameters'] = holiday_times
+    # gp_pd['parameter_density'] = parameter_density
+    # gp_pd['parameter_density'] = child_density
+    # gp_pd['growth_rate'] = growth_rate
+
+    # # write rate function data to simulation config toml
+    simtools.PARAMS['mpi_noise_function_sigma'] = params['n']
+    simtools.PARAMS['mpi_rate_function_width'] = params['w']
+    simtools.PARAMS['mpi_rate_function_center'] = params['c']
+    simtools.PARAMS['mpi_rate_function_shape'] = params['s']
+    simtools.PARAMS['mpi_rate_function_max'] = params['m']
+    simtools.PARAMS['mpi_rate_function_ratio'] = params['r']
+    simtools.PARAMS['mpi_death_rate'] = growth_rate[-1]
+
+    with open(paramfile, 'w') as params_toml:
+        toml.dump(simtools.PARAMS, params_toml)
 
 
 if __name__ == '__main__':

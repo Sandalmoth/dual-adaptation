@@ -144,6 +144,10 @@ def get_stationary_distribution_function(f_rate, f_noise, x_view, x_points, iter
     return interp1d(x, y, kind='cubic', bounds_error=False, fill_value=0.0)
 
 
+def distribution_to_function(axis, distribution):
+    return interp1d(axis, distribution, kind='cubic', bounds_error=False, fill_value=0.0)
+
+
 def get_child_distribution(parameter_density, f_rate, f_noise, x_view):
     """
     Given a parameter distribution, get the child distribution.
