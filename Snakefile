@@ -46,13 +46,39 @@ rule verify:
             -p simulation-config.toml \
             -i {input} \
             -m static \
-            -o {output.static}
+            -o {output.static} \
+            -vvv
         mpirun -n {params.mpi_nodes} ./code/bin/statics-mpi \
             -p simulation-config.toml \
             -i {input} \
             -m logistic \
-            -o {output.logistic}
+            -o {output.logistic} \
+            -vvv
         """
+
+
+rule plot_verify_output:
+    input:
+        infile = "intermediate/{name}.verify.hdf5",
+        static = "intermediate/{name}.verify.static.hdf5",
+        logistic = "intermediate/{name}.verify.logistic.hdf5",
+    output:
+        static = "results/figures/{name}.verify.static.pdf",
+        logistic = "results/figures/{name}.verify.logistic.pdf",
+    shell:
+        """
+        python3 code/plots.py verification-plots \
+            -p simulation-config.toml \
+            -i {input.infile} \
+            -o {input.static} \
+            --save {output.static}
+        python3 code/plots.py verification-plots \
+            -p simulation-config.toml \
+            -i {input.infile} \
+            -o {input.logistic} \
+            --save {output.logistic}
+        """
+        
 
 
 rule abc_diagnostic:
@@ -87,5 +113,52 @@ rule abc_fit:
             -b {input.db} \
             -u {input.up} \
             -d {input.down} \
+            --save {output}
+        """
+
+
+rule make_mpi_input:
+    input:
+        "intermediate/{name}.db"
+    output:
+        "intermediate/{name}.mpi-in.hdf5"
+    shell:
+        """
+        python3 code/plots.py generate-dataset-mpi \
+            -p simulation-config.toml \
+            -b {input} \
+            -o {output}
+        """
+
+
+rule mpi:
+    input:
+        "intermediate/{name}.mpi-in.hdf5"
+    output:
+        "intermediate/{name}.mpi-out.hdf5"
+    params:
+        mpi_nodes = config["mpi_nodes"]
+    shell:
+        """
+        mpirun -n {params.mpi_nodes} ./code/bin/dap-mpi \
+            -p simulation-config.toml \
+            -i {input} \
+            -o {output} \
+            -vvv
+        """
+
+
+rule plot_mpi_output:
+    input:
+        infile = "intermediate/{name}.mpi-in.hdf5",
+        outfile = "intermediate/{name}.mpi-out.hdf5",
+    output:
+        "results/figures/{name}.mpi.pdf"
+    shell:
+        """
+        python3 code/plots.py mpiout \
+            -p simulation-config.toml \
+            -i {input.infile} \
+            -o {input.outfile} \
             --save {output}
         """

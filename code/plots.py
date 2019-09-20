@@ -1294,26 +1294,40 @@ def generate_dataset_holiday(paramfile, dbfile, outfile, history_id):
         simtools.PARAMS['parameter_points']
     )
 
+    time_points_full = int(simtools.PARAMS['time_points_up']* \
+                           simtools.PARAMS['holiday_time_up_factor'])
+    time_step = simtools.PARAMS['time_range_up'][1]*simtools.PARAMS['holiday_time_up_factor']/ \
+                time_points_full
+
     # set up outfile
     out = h5py.File(outfile, 'w')
     gp_pd = out.create_group('parameter_density')
+    gp_pd.create_dataset('time_axis', (1, time_points_full),
+                         maxshape=(None, time_points_full))
+    gp_pd.create_dataset('parameter_density', (1, simtools.PARAMS['parameter_points'], time_points_full),
+                         maxshape=(None, simtools.PARAMS['parameter_points'], time_points_full))
+    gp_pd.create_dataset('growth_rate', (1, time_points_full),
+                         maxshape=(None, time_points_full))
 
-    time_points_full = int(simtools.PARAMS['time_points_up']* \
-                           simtools.PARAMS['holiday_time_up_factor'])
     holiday_times = []
+    n_trials = 0
+    capacity = 1
 
-    for i in range(3, time_points_full, int(simtools.PARAMS['holiday_start_stride'])):
-        for j in range(3, int(simtools.PARAMS['time_points_up']* \
+    for i in range(1, time_points_full, int(simtools.PARAMS['holiday_start_stride'])):
+        for j in range(1, int(simtools.PARAMS['time_points_up']* \
                        simtools.PARAMS['holiday_duration_factor']),
                        int(simtools.PARAMS['holiday_duration_stride'])):
-            if i + j > time_points_full - 3:
+            if i + j > time_points_full - 1:
                 continue
+
+            print(i, j)
+            n_trials += 1
 
             holiday_times.append((i, j))
 
-            lead_length = i
-            holiday_length = j
-            tail_length = time_points_full - i - j
+            lead_length = i + 1
+            holiday_length = j + 1
+            tail_length = time_points_full - i - j + 1
             tail_length = max(0, tail_length)
 
             time_range_lead = simtools.PARAMS['time_range_up'][1]*lead_length/ \
@@ -1380,23 +1394,37 @@ def generate_dataset_holiday(paramfile, dbfile, outfile, history_id):
                                                                       f_rate_up, f_noise,
                                                                       simtools.PARAMS['parameter_range'])
 
-            time_axis = np.concatenate([time_axis_lead,
-                                        time_axis_holiday + time_range_lead,
-                                        time_axis_tail + time_range_lead + time_range_holiday])
-            # time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1]* \
+            time_axis = np.concatenate([time_axis_lead[:-1],
+                                        time_axis_holiday[:-1] + time_range_lead - time_step,
+                                        time_axis_tail[:-1] + time_range_lead + time_range_holiday - time_step*2])
+            # time_axis2 = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1]* \
             #                                    simtools.PARAMS['holiday_time_up_factor'], time_points_full) # same for all
             parameter_axis = parameter_axis_lead # same for all
-            parameter_density = np.concatenate([parameter_density_lead,
-                                                parameter_density_holiday,
-                                                parameter_density_tail], axis=1)
-            growth_rate = np.concatenate([growth_rate_lead,
-                                          growth_rate_holiday,
-                                          growth_rate_tail])
-            child_density = np.concatenate([child_density_lead,
-                                            child_density_holiday,
-                                            child_density_tail], axis=1)
+            parameter_density = np.concatenate([parameter_density_lead[:, :-1],
+                                                parameter_density_holiday[:, :-1],
+                                                parameter_density_tail[:, :-1]], axis=1)
+            growth_rate = np.concatenate([growth_rate_lead[:-1],
+                                          growth_rate_holiday[:-1],
+                                          growth_rate_tail[:-1]])
+            child_density = np.concatenate([child_density_lead[:, :-1],
+                                            child_density_holiday[:, :-1],
+                                            child_density_tail[:, :-1]], axis=1)
 
-    gp_pd['time_axis'] = time_axis
+            if n_trials > capacity:
+                gp_pd['time_axis'].resize(gp_pd['time_axis'].shape[0] * 2, 0)
+                gp_pd['parameter_density'].resize(gp_pd['parameter_density'].shape[0] * 2, 0)
+                gp_pd['growth_rate'].resize(gp_pd['growth_rate'].shape[0] * 2, 0)
+                capacity *= 2
+            gp_pd['time_axis'][n_trials - 1] = time_axis
+            gp_pd['parameter_density'][n_trials - 1] = child_density
+            gp_pd['growth_rate'][n_trials - 1] = growth_rate
+
+    gp_pd['time_axis'].resize(n_trials, 0)
+    gp_pd['parameter_density'].resize(n_trials, 0)
+    gp_pd['growth_rate'].resize(n_trials, 0)
+
+
+    # gp_pd['time_axis'] = time_axis
     gp_pd['parameter_axis'] = parameter_axis
     gp_pd['holiday_parameters'] = holiday_times
     # gp_pd['parameter_density'] = parameter_density
