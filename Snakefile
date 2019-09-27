@@ -162,3 +162,51 @@ rule plot_mpi_output:
             -o {input.outfile} \
             --save {output}
         """
+
+
+rule make_holiday_input:
+    input:
+        "intermediate/{name}.db"
+    output:
+        "intermediate/{name}.holiday-in.hdf5"
+    shell:
+        """
+        python3 code/plots.py generate-dataset-holiday \
+            -p simulation-config.toml \
+            -b {input} \
+            -o {output}
+        """
+
+
+rule holiday:
+    input:
+        "intermediate/{name}.holiday-in.hdf5"
+    output:
+        "intermediate/{name}.holiday-out.hdf5"
+    params:
+        mpi_nodes = config["mpi_nodes"]
+    shell:
+        """
+        mpirun -n {params.mpi_nodes} ./code/bin/holiday-mpi \
+            -p simulation-config.toml \
+            -i {input} \
+            -o {output} \
+            -vvv
+        """
+
+
+rule plot_holiday_output:
+    input:
+        infile = "intermediate/{name}.holiday-in.hdf5",
+        outfile = "intermediate/{name}.holiday-out.hdf5",
+    output:
+        "results/figures/{name}.holiday.pdf"
+    shell:
+        """
+        python3 code/plots.py holiday-plots \
+            -p simulation-config.toml \
+            -i {input.infile} \
+            -o {input.outfile} \
+            --save {output}
+        """
+
