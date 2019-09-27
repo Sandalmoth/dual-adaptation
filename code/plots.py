@@ -1381,18 +1381,18 @@ def generate_dataset_holiday(paramfile, dbfile, outfile, history_id):
             child_density_lead = np.zeros(shape=parameter_density_lead.shape)
             for k in range(parameter_density_lead.shape[1]):
                 child_density_lead[:, k] = simtools.get_child_distribution(parameter_density_lead[:, k],
-                                                                      f_rate_up, f_noise,
-                                                                      simtools.PARAMS['parameter_range'])
+                                                                           f_rate_up, f_noise,
+                                                                           simtools.PARAMS['parameter_range'])
             child_density_holiday = np.zeros(shape=parameter_density_holiday.shape)
             for k in range(parameter_density_holiday.shape[1]):
                 child_density_holiday[:, k] = simtools.get_child_distribution(parameter_density_holiday[:, k],
-                                                                      f_rate_down, f_noise,
-                                                                      simtools.PARAMS['parameter_range'])
+                                                                              f_rate_down, f_noise,
+                                                                              simtools.PARAMS['parameter_range'])
             child_density_tail = np.zeros(shape=parameter_density_tail.shape)
             for k in range(parameter_density_tail.shape[1]):
                 child_density_tail[:, k] = simtools.get_child_distribution(parameter_density_tail[:, k],
-                                                                      f_rate_up, f_noise,
-                                                                      simtools.PARAMS['parameter_range'])
+                                                                           f_rate_up, f_noise,
+                                                                           simtools.PARAMS['parameter_range'])
 
             time_axis = np.concatenate([time_axis_lead[:-1],
                                         time_axis_holiday[:-1] + time_range_lead - time_step,
@@ -1440,8 +1440,440 @@ def generate_dataset_holiday(paramfile, dbfile, outfile, history_id):
     simtools.PARAMS['mpi_rate_function_ratio'] = params['r']
     simtools.PARAMS['mpi_death_rate'] = growth_rate[-1]
 
+    # simulation needs to know number of timelines
+    simtools.PARAMS['mpi_holiday_timelines'] = len(holiday_times)
+
     with open(paramfile, 'w') as params_toml:
         toml.dump(simtools.PARAMS, params_toml)
+
+
+@main.command()
+@click.option('-i', '--infile', type=click.Path())
+@click.option('--save', type=click.Path(), default=None)
+def plot_dataset_holiday(infile, save):
+    """
+    Plots for examining input to drug holiday simulator
+    """
+
+    def lr(x):
+        return abs(x[-1] - x[0])
+
+    data = h5py.File(infile, 'r')
+    gp_pd = data['parameter_density']
+
+    if save is not None:
+        pdf_out = PdfPages(save)
+
+    # growth rate over time
+    fig, axs = plt.subplots()
+
+    growth_rate = np.array(gp_pd['growth_rate'])
+    time_axis = np.array(gp_pd['time_axis'])
+
+    rate_range = np.max(growth_rate) - np.min(growth_rate)
+
+    for i in range(growth_rate.shape[0]):
+        plt.plot(time_axis[i, :], growth_rate[i, :] + i*rate_range*2,
+                 color='k', linewidth=0.5)
+
+    axs.set_xlabel('Time [days]')
+    axs.set_yticks([])
+
+    fig.set_size_inches(4, 8)
+    plt.tight_layout()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    # mean child density over time
+    fig, axs = plt.subplots()
+
+    child_density = np.array(gp_pd['parameter_density'])
+    parameter_axis = np.array(gp_pd['parameter_axis'])
+    time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
+    time_points = time_axis.shape[0]
+    parameter_range = np.max(parameter_axis) - np.min(parameter_axis)
+    print(child_density.shape)
+    print(time_points)
+
+    average_child_density = \
+        np.array([[np.sum(parameter_axis*child_density[j, :, i]/ \
+                          parameter_axis.size*parameter_range)
+                   for i in range(time_points)]
+                  for j in range(child_density.shape[0])])
+
+    fig.set_size_inches(4, 4)
+    img = axs.imshow(
+        np.transpose(average_child_density),
+        extent=(np.min(parameter_axis), np.max(parameter_axis),
+                np.min(time_axis), np.max(time_axis)),
+        aspect=lr(parameter_axis)/lr(time_axis),
+        vmin=np.min(parameter_axis), vmax=np.max(parameter_axis),
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    # time axis homogenaeity
+    fig, axs = plt.subplots()
+    time_axis = np.array(gp_pd['time_axis'])
+    average_time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
+    for i in range(time_axis.shape[0]):
+        axs.plot(time_axis[i, :] - average_time_axis, alpha=0.5, linewidth=1.0, color='k')
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    if save is not None:
+        pdf_out.close()
+
+
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-i', '--infile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+@click.option('--save', type=click.Path(), default=None)
+def holiday_plots(paramfile, infile, outfile, save):
+
+    data = h5py.File(outfile, 'r')
+    gp_result = data['result']
+
+    indata = h5py.File(infile, 'r')
+    gp_input = indata['parameter_density']
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    if save is not None:
+        pdf_out = PdfPages(save)
+
+
+    # escape probability as a function of time of mutation
+    fig, axs = plt.subplots()
+
+    parameter_density = gp_input['parameter_density']
+
+    for i in range(parameter_density.shape[0]):
+        time_axis = gp_input['time_axis'][i, :]
+        escaped_sum = np.sum(gp_result['escaped'][:, :, i], axis=0) / \
+                  simtools.PARAMS['mpi_holiday_simulations_per_timeline']
+
+        axs.plot(time_axis, escaped_sum + i/20,
+                 color='lightgrey', linewidth='0.5', zorder=1, alpha=0.5)
+        axs.plot(time_axis, moving_mean(escaped_sum, 101) + i/20,
+                 color='k', linewidth='1.0', zorder=2)
+    axs.set_xlabel('Time of mutation')
+    axs.set_ylabel('Probability of a mutant reaching ' + \
+                   str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # mutation vulnerability as a function of time of mutation
+    fig, axs = plt.subplots()
+
+    for i in range(parameter_density.shape[0]):
+        time_axis = gp_input['time_axis'][i, :]
+        growth_rate = gp_input['growth_rate'][i, :]
+        escaped_sum = np.sum(gp_result['escaped'][:, :, i], axis=0) / \
+                  simtools.PARAMS['mpi_holiday_simulations_per_timeline']
+
+        axs.plot(time_axis, escaped_sum*growth_rate + i/20,
+                 color='lightgrey', linewidth='0.5', zorder=1, alpha=0.5)
+        axs.plot(time_axis, moving_mean(escaped_sum*growth_rate, 101) + i/20,
+                 color='k', linewidth='1.0', zorder=2)
+    axs.set_xlabel('Time of mutation')
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # cumulative mutation vulnerability as a function of time of mutation
+    fig, axs = plt.subplots()
+
+    for i in range(parameter_density.shape[0]):
+        time_axis = gp_input['time_axis'][i, :]
+        growth_rate = gp_input['growth_rate'][i, :]
+        escaped_sum = np.sum(gp_result['escaped'][:, :, i], axis=0) / \
+                  simtools.PARAMS['mpi_holiday_simulations_per_timeline']
+
+        axs.plot(time_axis, np.cumsum(escaped_sum*growth_rate) + i/20,
+                 color='k', linewidth='1.0', zorder=1)
+    axs.set_xlabel('Time of mutation')
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    # cumulative mutation vulnerability heatmap
+    fig, axs = plt.subplots()
+
+    def lr(x):
+        return x[1] - x[0]
+
+    ts_start_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 0])))
+    ts_duration_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 1])))
+    start_axis = ts_start_axis \
+                 /(simtools.PARAMS['time_points_up']*simtools.PARAMS['holiday_time_up_factor']) \
+                 *simtools.PARAMS['time_range_up'][1]
+    duration_axis = ts_duration_axis \
+                 /(simtools.PARAMS['time_points_up']*simtools.PARAMS['holiday_time_up_factor']) \
+                 *simtools.PARAMS['time_range_up'][1]
+
+    coordinates = [(np.where(ts_start_axis==x)[0][0],
+                    np.where(ts_duration_axis==y)[0][0])
+                   for x, y in gp_input['holiday_parameters'][:, ]]
+    cumulative_map = np.zeros(shape=(start_axis.size, duration_axis.size))
+
+    for i in range(parameter_density.shape[0]):
+        time_axis = gp_input['time_axis'][i, :]
+        growth_rate = gp_input['growth_rate'][i, :]
+        escaped_sum = np.sum(gp_result['escaped'][:, :, i], axis=0) / \
+                  simtools.PARAMS['mpi_holiday_simulations_per_timeline']
+
+        cumulative_map[coordinates[i]] = np.sum(escaped_sum*growth_rate)
+
+    img = axs.imshow(
+        np.transpose(cumulative_map),
+        extent=(np.min(start_axis), np.max(start_axis),
+                np.min(duration_axis), np.max(duration_axis)),
+        aspect=lr(start_axis)/lr(duration_axis),
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # fig, axs = plt.subplots()
+
+    # time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+    #                                    simtools.PARAMS['time_points_up'])
+
+    # escaped_sum = np.sum(gp_result['escaped'], axis=0) / \
+    #               simtools.PARAMS['mpi_simulations_per_time_point']
+
+    # growth_rate = gp_input['growth_rate']
+
+    # axs.plot(time_axis, escaped_sum*growth_rate, color='lightgrey', linewidth='0.5')
+    # axs.plot(time_axis, moving_mean(escaped_sum*growth_rate, 101), color='k',
+    #          linewidth='1.0', label='Mutation risk')
+    # axs_cum = axs.twinx()
+    # axs_cum.plot(time_axis, np.cumsum(escaped_sum*growth_rate), color='k',
+    #              linestyle='--', linewidth='1.0')
+    # # empty curve drawn on first axis for legend purposes
+    # axs.plot([], [], color='k',
+    #          linewidth='1.0', linestyle='--', label='Cumulative mutation risk')
+    # axs.set_xlabel('Time of mutation')
+
+    # axs.set_ylim(0, axs.get_ylim()[1])
+    # axs.set_yticks([0])
+    # axs_cum.set_ylim(0, axs_cum.get_ylim()[1])
+    # axs_cum.set_yticks([0])
+
+    # axs.legend()
+
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+    #     plt.show()
+
+
+    # # plot of growth rate, escape probability and mutation vulnerability all in one
+    # fig, axs = plt.subplots()
+
+    # time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+    #                                    simtools.PARAMS['time_points_up'])
+
+    # escaped_sum = np.sum(gp_result['escaped'], axis=0) / \
+    #               simtools.PARAMS['mpi_simulations_per_time_point']
+
+    # growth_rate = gp_input['growth_rate']
+
+    # axs.plot(time_axis, escaped_sum, color='orange', linewidth='0.5', alpha=0.5)
+    # axs.plot(time_axis, moving_mean(escaped_sum, 101), color='orange', linewidth='1.0')
+    # axs_rate = axs.twinx()
+    # axs_rate.plot(time_axis, growth_rate, color='blue', linewidth=1.0)
+    # axs_risk = axs.twinx()
+    # axs_risk.plot(time_axis, escaped_sum*growth_rate, color='lightgrey', linewidth='0.5')
+    # axs_risk.plot(time_axis, moving_mean(escaped_sum*growth_rate, 101), color='k',
+    #          linewidth='1.0', label='Mutation risk')
+    # axs_cum = axs.twinx()
+    # axs_cum.plot(time_axis, np.cumsum(escaped_sum*growth_rate), color='k',
+    #              linestyle='--', linewidth='1.0')
+
+    # # empty curves drawn on first axis for legend purposes
+    # axs.plot([], [], color='orange',
+    #          linewidth='1.0', linestyle='-', label='Probability of reaching ' + str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    # axs.plot([], [], color='blue',
+    #          linewidth='1.0', linestyle='-', label='Normal cell average growth rate')
+    # axs.plot([], [], color='k',
+    #          linewidth='1.0', linestyle='-', label='Mutation risk')
+    # axs.plot([], [], color='k',
+    #          linewidth='1.0', linestyle='--', label='Cumulative mutation risk')
+
+    # axs.set_ylabel('Probability of a mutant reaching ' + \
+    #                str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    # axs_rate.set_ylabel('Normal cell growth rate')
+    # axs.set_xlabel('Time of mutation')
+
+    # axs.set_ylim(0, axs.get_ylim()[1])
+    # axs_rate.set_ylim(0, axs_rate.get_ylim()[1])
+    # axs_risk.set_ylim(0, axs_risk.get_ylim()[1])
+    # axs_risk.set_yticks([0])
+    # axs_cum.set_ylim(0, axs_cum.get_ylim()[1])
+    # axs_cum.set_yticks([0])
+
+    # axs.legend(loc='lower right', frameon=False)
+
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+    #     plt.show()
+
+
+    # # plot of growth rate, escape probability and mutation vulnerability all in one
+
+    # # death time and escape time distribution as a function of time of mutation
+    # fig, axs = plt.subplots(ncols=2)
+    # fig.set_size_inches(6, 3)
+
+    # escaped = np.array(gp_result['escaped'])
+    # time = np.array(gp_result['time'])
+
+    # quantiles_death = [[], [], [], []]
+    # quantiles_escaped = [[], [], [], []]
+
+    # colors = ['grey', 'black', 'grey', 'lightgrey']
+
+    # for i in range(escaped.shape[1]):
+    #     death_times = time[:, i][escaped[:, i] == 0]
+    #     escaped_times = time[:, i][escaped[:, i] == 1]
+    #     q_death = np.percentile(death_times, (25, 50, 75, 95))
+    #     q_escaped = np.percentile(escaped_times, (25, 50, 75, 95)) if escaped_times.size != 0 else (None, None, None, None)
+    #     for j in range(4):
+    #         quantiles_death[j].append(q_death[j])
+    #         quantiles_escaped[j].append(q_escaped[j])
+
+    # for i, color in enumerate(colors):
+    #     axs[0].plot(
+    #         simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+    #                                simtools.PARAMS['time_points_up']),
+    #         quantiles_death[i],
+    #         linewidth=1.0,
+    #         color=color
+    #     )
+
+    # for i, color in enumerate(colors):
+    #     axs[1].plot(
+    #         simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+    #                                simtools.PARAMS['time_points_up']),
+    #         quantiles_escaped[i],
+    #         linewidth=1.0,
+    #         color=color
+    #     )
+
+    # axs[0].set_xlabel('Time of mutation')
+    # axs[1].set_xlabel('Time of mutation')
+    # axs[0].set_ylabel('Time of death')
+    # axs[1].set_ylabel('Time of escape')
+
+    # plt.tight_layout()
+
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+    #     plt.show()
+
+
+    # # histogram of aggregate death/escape time distributions
+    # fig, axs = plt.subplots(ncols=2)
+    # fig.set_size_inches(6, 3)
+
+    # axs[0].hist(time[escaped == 0], color='lightgrey',
+    #             range=(0, np.percentile(time[escaped == 0], 99)), bins=100,
+    #             density=True)
+    # axs[1].hist(time[escaped == 1], color='lightgrey',
+    #             range=(0, np.percentile(time[escaped == 1], 99) if escaped_times.size != 0 else 1), bins=100,
+    #             density=True)
+
+    # x0 = np.linspace(0, np.percentile(time[escaped == 0], 99), 100)
+    # death_rate = simtools.PARAMS['mpi_death_rate']
+    # axs[0].plot(x0, death_rate*np.exp(-death_rate*x0), color='k', linewidth=1.0,
+    #             label='Exponential dist.\n$\lambda$ = Death rate')
+    # axs[0].legend()
+    # axs[0].set_xlabel('Time of death')
+    # axs[1].set_xlabel('Time of escape')
+    # axs[0].set_ylabel('Probability density')
+    # axs[1].set_ylabel('Probability density')
+
+    # plt.tight_layout()
+
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+    #     plt.show()
+
+
+    # # histogram of first parameter in dead/escaped lines
+    # fig, axs = plt.subplots(ncols=2)
+    # fig.set_size_inches(6, 3)
+
+    # first_parameter = np.array(gp_result['first_parameter'])
+
+    # axs[0].hist(first_parameter[escaped == 0], color='lightgrey',
+    #             bins=100, density=True)
+    # axs[1].hist(first_parameter[escaped == 1], color='lightgrey',
+    #             bins=100, density=True)
+
+    # f_rate_down = Rate(
+    #     simtools.PARAMS['mpi_rate_function_shape'],
+    #     simtools.PARAMS['mpi_rate_function_center'],
+    #     simtools.PARAMS['mpi_rate_function_width'],
+    #     simtools.PARAMS['optimum_normal'], 1)
+
+    # x0 = np.linspace(axs[0].get_xlim()[0], axs[0].get_xlim()[1], 1000)
+    # axs[0].plot(x0, f_rate_down(x0)*axs[0].get_ylim()[1], color='k', linewidth=1.0, label='Rate function')
+    # x1 = np.linspace(axs[1].get_xlim()[0], axs[1].get_xlim()[1], 1000)
+    # axs[1].plot(x1, f_rate_down(x1)*axs[1].get_ylim()[1], color='k', linewidth=1.0, label='Rate function')
+
+    # axs[1].legend()
+
+    # for i in range(2):
+    #     axs[i].set_xlabel('Parameter of first cell')
+    #     axs[i].set_ylabel('Probability density')
+
+    # axs[0].set_title('Mutants that did not survive')
+    # axs[1].set_title('Mutants that reached ' + \
+    #                  str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+
+    # plt.tight_layout()
+
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+    #     plt.show()
+
+
+    if save is not None:
+        pdf_out.close()
+
 
 
 if __name__ == '__main__':
