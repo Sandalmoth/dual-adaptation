@@ -1,7 +1,7 @@
 time_points_up = 512
-time_range_up = [ 0, 84,]
+time_range_up = [ 0, 80,]
 time_points_down = 256
-time_range_down = [ 0, 28,]
+time_range_down = [ 0, 40,]
 parameter_points = 1001
 parameter_range = [ -5, 11,]
 optimum_normal = 1.0
