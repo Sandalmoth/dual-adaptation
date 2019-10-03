@@ -4,6 +4,7 @@ All kinds of plotting
 """
 
 
+import copy
 import csv
 
 import click
@@ -1313,10 +1314,8 @@ def generate_dataset_holiday(paramfile, dbfile, outfile, history_id):
     n_trials = 0
     capacity = 1
 
-    for i in range(1, time_points_full, int(simtools.PARAMS['holiday_start_stride'])):
-        for j in range(1, int(simtools.PARAMS['time_points_up']* \
-                       simtools.PARAMS['holiday_duration_factor']),
-                       int(simtools.PARAMS['holiday_duration_stride'])):
+    for i in range(*simtools.PARAMS['holiday_start_range']):
+        for j in range(*simtools.PARAMS['holiday_duration_range']):
             if i + j > time_points_full - 1:
                 continue
 
@@ -1473,7 +1472,7 @@ def plot_dataset_holiday(infile, save):
     rate_range = np.max(growth_rate) - np.min(growth_rate)
 
     for i in range(growth_rate.shape[0]):
-        plt.plot(time_axis[i, :], growth_rate[i, :] + i*rate_range*2,
+        plt.plot(time_axis[i, :], growth_rate[i, :] + i*rate_range*1.2,
                  color='k', linewidth=0.5)
 
     axs.set_xlabel('Time [days]')
@@ -1492,33 +1491,64 @@ def plot_dataset_holiday(infile, save):
 
     child_density = np.array(gp_pd['parameter_density'])
     parameter_axis = np.array(gp_pd['parameter_axis'])
-    time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
+    time_axis = np.array(gp_pd['time_axis'])
     time_points = time_axis.shape[0]
     parameter_range = np.max(parameter_axis) - np.min(parameter_axis)
     print(child_density.shape)
     print(time_points)
 
     average_child_density = \
-        np.array([[np.sum(parameter_axis*child_density[j, :, i]/ \
+        np.array([[np.sum(parameter_axis*child_density[i, :, j]/ \
                           parameter_axis.size*parameter_range)
                    for i in range(time_points)]
-                  for j in range(child_density.shape[0])])
+                  for j in range(child_density.shape[2])])
 
-    fig.set_size_inches(4, 4)
-    img = axs.imshow(
-        np.transpose(average_child_density),
-        extent=(np.min(parameter_axis), np.max(parameter_axis),
-                np.min(time_axis), np.max(time_axis)),
-        aspect=lr(parameter_axis)/lr(time_axis),
-        vmin=np.min(parameter_axis), vmax=np.max(parameter_axis),
-        cmap=cm.cubehelix,
-        origin='lower'
-    )
+    print(average_child_density.shape)
+
+    density_range = np.max(average_child_density) - np.min(average_child_density)
+
+    for i in range(time_axis.shape[0]):
+        print(time_axis[i, :].shape, average_child_density[:, i].shape)
+        plt.plot(time_axis[i, :], average_child_density[:, i] + i*density_range*1.2,
+                 color='k', linewidth=0.5)
 
     if save is not None:
         pdf_out.savefig()
     else:
         plt.show()
+
+    # mean child density#  over time heatmap
+    # fig, axs = plt.subplots()
+
+    # child_density = np.array(gp_pd['parameter_density'])
+    # parameter_axis = np.array(gp_pd['parameter_axis'])
+    # time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
+    # time_points = time_axis.shape[0]
+    # parameter_range = np.max(parameter_axis) - np.min(parameter_axis)
+    # print(child_density.shape)
+    # print(time_points)
+
+    # average_child_density = \
+    #     np.array([[np.sum(parameter_axis*child_density[j, :, i]/ \
+    #                       parameter_axis.size*parameter_range)
+    #                for i in range(time_points)]
+    #               for j in range(child_density.shape[0])])
+
+    # fig.set_size_inches(4, 4)
+    # img = axs.imshow(
+    #     np.transpose(average_child_density),
+    #     extent=(np.min(parameter_axis), np.max(parameter_axis),
+    #             np.min(time_axis), np.max(time_axis)),
+    #     aspect=lr(parameter_axis)/lr(time_axis),
+    #     vmin=np.min(parameter_axis), vmax=np.max(parameter_axis),
+    #     cmap=cm.cubehelix,
+    #     origin='lower'
+    # )
+
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+    #     plt.show()
 
     # time axis homogenaeity
     fig, axs = plt.subplots()
@@ -1568,7 +1598,7 @@ def holiday_plots(paramfile, infile, outfile, save):
         axs.plot(time_axis, escaped_sum + i/20,
                  color='lightgrey', linewidth='0.5', zorder=1, alpha=0.5)
         axs.plot(time_axis, moving_mean(escaped_sum, 101) + i/20,
-                 color='k', linewidth='1.0', zorder=2)
+                 color='k', linewidth='0.5', zorder=2)
     axs.set_xlabel('Time of mutation')
     axs.set_ylabel('Probability of a mutant reaching ' + \
                    str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
@@ -1588,10 +1618,10 @@ def holiday_plots(paramfile, infile, outfile, save):
         escaped_sum = np.sum(gp_result['escaped'][:, :, i], axis=0) / \
                   simtools.PARAMS['mpi_holiday_simulations_per_timeline']
 
-        axs.plot(time_axis, escaped_sum*growth_rate + i/20,
+        axs.plot(time_axis, escaped_sum*growth_rate + i/2000,
                  color='lightgrey', linewidth='0.5', zorder=1, alpha=0.5)
         axs.plot(time_axis, moving_mean(escaped_sum*growth_rate, 101) + i/20,
-                 color='k', linewidth='1.0', zorder=2)
+                 color='k', linewidth='0.5', zorder=2)
     axs.set_xlabel('Time of mutation')
 
     if save is not None:
@@ -1610,7 +1640,7 @@ def holiday_plots(paramfile, infile, outfile, save):
                   simtools.PARAMS['mpi_holiday_simulations_per_timeline']
 
         axs.plot(time_axis, np.cumsum(escaped_sum*growth_rate) + i/20,
-                 color='k', linewidth='1.0', zorder=1)
+                 color='k', linewidth='0.5', zorder=1)
     axs.set_xlabel('Time of mutation')
 
     if save is not None:
@@ -1627,10 +1657,10 @@ def holiday_plots(paramfile, infile, outfile, save):
     ts_start_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 0])))
     ts_duration_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 1])))
     start_axis = ts_start_axis \
-                 /(simtools.PARAMS['time_points_up']*simtools.PARAMS['holiday_time_up_factor']) \
+                 /(simtools.PARAMS['time_points_up']) \
                  *simtools.PARAMS['time_range_up'][1]
     duration_axis = ts_duration_axis \
-                 /(simtools.PARAMS['time_points_up']*simtools.PARAMS['holiday_time_up_factor']) \
+                 /(simtools.PARAMS['time_points_up']) \
                  *simtools.PARAMS['time_range_up'][1]
 
     coordinates = [(np.where(ts_start_axis==x)[0][0],
@@ -1648,6 +1678,30 @@ def holiday_plots(paramfile, infile, outfile, save):
 
     img = axs.imshow(
         np.transpose(cumulative_map),
+        extent=(np.min(start_axis), np.max(start_axis),
+                np.min(duration_axis), np.max(duration_axis)),
+        aspect=lr(start_axis)/lr(duration_axis),
+        cmap=cm.cubehelix,
+        origin='lower'
+    )
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    # cumulative mutation vulnerability heatmap
+    # masking the top mask_amount of numbers
+    mask_amount = 50 # in %
+
+    fig, axs = plt.subplots()
+
+    mask_limit = np.percentile(cumulative_map, 100 - mask_amount)
+    masked_cumulative_map = copy.deepcopy(cumulative_map)
+    masked_cumulative_map[cumulative_map > mask_limit] = None
+
+    img = axs.imshow(
+        np.transpose(masked_cumulative_map),
         extent=(np.min(start_axis), np.max(start_axis),
                 np.min(duration_axis), np.max(duration_axis)),
         aspect=lr(start_axis)/lr(duration_axis),

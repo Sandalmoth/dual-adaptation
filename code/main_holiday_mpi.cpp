@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
 
       if (arguments.verbosity > 1) std::cout << "Loading time axis" << std::endl;
       H5::DataSet ds_time_axis = gp_parameter_density.openDataSet("time_axis");
-      time_axis = read_vector_2d(ds_time_axis, H5::PredType::NATIVE_DOUBLE, 1);
+      time_axis = read_vector_2d(ds_time_axis, H5::PredType::NATIVE_DOUBLE, 0);
 
       if (arguments.verbosity > 1) std::cout << "Loading parameter axis" << std::endl;
       H5::DataSet ds_parameter_axis = gp_parameter_density.openDataSet("parameter_axis");
@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
 
       if (arguments.verbosity > 1) std::cout << "Loading death rate" << std::endl;
       H5::DataSet ds_death_rate = gp_parameter_density.openDataSet("growth_rate");
-      death_rate = read_vector_2d(ds_death_rate, H5::PredType::NATIVE_DOUBLE, 1);
+      death_rate = read_vector_2d(ds_death_rate, H5::PredType::NATIVE_DOUBLE, 0);
 
     } catch (H5::Exception &e) {
       std::cerr << "HDF5 Error:\n\t";
@@ -374,7 +374,8 @@ int main(int argc, char** argv) {
           ddap.set_noise_sigma(parameters.noise_function_sigma);
           double first_parameter = parameter_distribution(rng);
           ddap.add_cell(first_parameter);
-          auto result = ddap.simulate(parameters.max_population_size, parameters.max_time,
+          auto result = ddap.simulate(parameters.max_population_size,
+                                      parameters.max_time,
                                       time_axis[i + world_rank*parameters.time_points/world_size
                                                 + k*parameters.time_points]);
           // save result
@@ -488,14 +489,14 @@ int main(int argc, char** argv) {
     std::cout << total_timer() << "\tWrote result" << std::endl;
 
   // Free dynamic memory
-  delete time_axis;
-  delete parameter_axis;
-  delete parameter_density;
-  delete death_rate;
-  delete result_escaped;
-  delete result_time;
-  delete result_max_cells;
-  delete result_first_parameter;
+  delete[] time_axis;
+  delete[] parameter_axis;
+  delete[] parameter_density;
+  delete[] death_rate;
+  delete[] result_escaped;
+  delete[] result_time;
+  delete[] result_max_cells;
+  delete[] result_first_parameter;
 
   MPI_Finalize();
 

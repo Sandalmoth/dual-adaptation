@@ -535,15 +535,15 @@ int main(int argc, char** argv) {
     std::cout << total_timer() << "\tWrote result" << std::endl;
 
   // Free dynamic memory
-  delete time_axis_up;
-  delete time_axis_down;
-  delete parameter_axis;
-  delete parameter_density_up;
-  delete parameter_density_down;
-  delete result_mean_up;
-  delete result_stdev_up;
-  delete result_mean_down;
-  delete result_stdev_down;
+  delete[] time_axis_up;
+  delete[] time_axis_down;
+  delete[] parameter_axis;
+  delete[] parameter_density_up;
+  delete[] parameter_density_down;
+  delete[] result_mean_up;
+  delete[] result_stdev_up;
+  delete[] result_mean_down;
+  delete[] result_stdev_down;
 
   MPI_Finalize();
 

@@ -347,11 +347,14 @@ int main(int argc, char** argv) {
         if (parameters.variable_death_rate) {
           // simulate using a variable death rate (dynamic dap)
           DDAP<RateBeta> ddap(rate, rng);
-          ddap.set_death_rate(death_rate, time_axis[parameters.time_points - 1], parameters.time_points);
+          ddap.set_death_rate(death_rate,
+                              time_axis[parameters.time_points - 1],
+                              parameters.time_points);
           ddap.set_noise_sigma(parameters.noise_function_sigma);
           double first_parameter = parameter_distribution(rng);
           ddap.add_cell(first_parameter);
-          auto result = ddap.simulate(parameters.max_population_size, parameters.max_time,
+          auto result = ddap.simulate(parameters.max_population_size,
+                                      parameters.max_time,
                                       time_axis[i + world_rank*parameters.time_points/world_size]);
           // save result
           result_escaped[i*parameters.simulations_per_time_point + j] = std::get<0>(result);
@@ -468,14 +471,14 @@ int main(int argc, char** argv) {
     std::cout << total_timer() << "\tWrote result" << std::endl;
 
   // Free dynamic memory
-  delete time_axis;
-  delete parameter_axis;
-  delete parameter_density;
-  delete death_rate;
-  delete result_escaped;
-  delete result_time;
-  delete result_max_cells;
-  delete result_first_parameter;
+  delete[] time_axis;
+  delete[] parameter_axis;
+  delete[] parameter_density;
+  delete[] death_rate;
+  delete[] result_escaped;
+  delete[] result_time;
+  delete[] result_max_cells;
+  delete[] result_first_parameter;
 
   MPI_Finalize();
 
