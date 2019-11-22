@@ -10,6 +10,7 @@ import csv
 import click
 import h5py
 import matplotlib.cm as cm
+import matplotlib.gridspec as gridspec
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
@@ -19,6 +20,11 @@ from scipy.interpolate import PchipInterpolator as pchip
 import toml
 
 import simtools
+
+# import cm_xml_to_matplotlib as cmx
+
+# BUOR = cmx.make_cmap('blue-orange-div.xml')
+
 
 
 class Rate:
@@ -353,7 +359,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
         aspect=parameter_range/simtools.PARAMS['time_range_up'][1],
         extent=[np.min(parameter_axis), np.max(parameter_axis), 0,
                 simtools.PARAMS['time_range_up'][1]],
-        cmap=cm.cubehelix,
+        cmap=cm.viridis,
         origin='lower'
     )
     axs[0].plot(obs['x_up'], time_axis, linewidth=1.0, color='r')
@@ -387,7 +393,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
         aspect=parameter_range/simtools.PARAMS['time_range_down'][1],
         extent=[np.min(parameter_axis), np.max(parameter_axis), 0,
                 simtools.PARAMS['time_range_down'][1]],
-        cmap=cm.cubehelix,
+        cmap=cm.viridis,
         origin='lower'
     )
     axs[1].plot(obs['x_down'], time_axis, linewidth=1.0, color='r')
@@ -453,7 +459,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
         aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
         extent=[0, simtools.PARAMS['time_range_up'][1],
                 np.min(parameter_axis), np.max(parameter_axis)],
-        cmap=cm.cubehelix,
+        cmap=cm.magma,
         origin='lower'
     )
     axs[0].plot(time_axis, obs['x_up'], linewidth=1.0, color='k',
@@ -488,7 +494,7 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
         aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
         extent=[0, simtools.PARAMS['time_range_down'][1],
                 np.min(parameter_axis), np.max(parameter_axis)],
-        cmap=cm.cubehelix,
+        cmap=cm.magma,
         origin='lower'
     )
     axs[1].plot(time_axis, obs['x_down'], linewidth=1.0, color='k',
@@ -626,7 +632,7 @@ def plot_dataset(infile, save):
         extent=(np.min(parameter_axis), np.max(parameter_axis),
                 np.min(time_axis), np.max(time_axis)),
         aspect=lr(parameter_axis)/lr(time_axis),
-        cmap=cm.cubehelix,
+        cmap=cm.viridis,
         origin='lower'
     )
 
@@ -822,6 +828,70 @@ def mpiout(paramfile, infile, outfile, save):
     axs_cum.set_yticks([0])
 
     axs.legend(loc='lower right', frameon=False)
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # plot of growth rate, escape probability and mutation vulnerability all in one
+    # small multiples version
+    # fig, axs = plt.subplots(nrows=3)
+    fig = plt.figure(constrained_layout=True)
+    fig.set_size_inches(7, 4)
+    gs = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
+    axs = []
+    axs.append(fig.add_subplot(gs[:, 0]))
+    axs.append(fig.add_subplot(gs[0, 1]))
+    axs.append(fig.add_subplot(gs[1, 1]))
+
+    time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                                       simtools.PARAMS['time_points_up'])
+
+    escaped_sum = np.sum(gp_result['escaped'], axis=0) / \
+                  simtools.PARAMS['mpi_simulations_per_time_point']
+
+    growth_rate = gp_input['growth_rate']
+
+    axs[0].plot(time_axis, escaped_sum, color='orange', linewidth='0.4', alpha=0.5)
+    axs[0].plot(time_axis, moving_mean(escaped_sum, 101), color='orange', linewidth='1.0')
+    axs_rate = axs[0].twinx()
+    axs_rate.plot(time_axis, growth_rate, color='blue', linewidth=1.0)
+    axs[1].plot(time_axis, escaped_sum*growth_rate, color='lightgrey', linewidth='0.5')
+    axs[1].plot(time_axis, moving_mean(escaped_sum*growth_rate, 101), color='k',
+             linewidth='1.0', label='Mutation risk')
+    axs[2].plot(time_axis, np.cumsum(escaped_sum*growth_rate), color='k',
+                 linestyle='-', linewidth='1.0')
+
+    # empty curves drawn on first axis for legend purposes
+    axs[0].plot([], [], color='orange',
+             linewidth='1.0', linestyle='-', label='Probability of reaching ' + str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    axs[0].plot([], [], color='blue',
+             linewidth='1.0', linestyle='-', label='Normal cell average growth rate')
+    # axs.plot([], [], color='k',
+             # linewidth='1.0', linestyle='-', label='Mutation risk')
+    # axs.plot([], [], color='k',
+             # linewidth='1.0', linestyle='--', label='Cumulative mutation risk')
+
+    axs[0].set_ylabel('Probability of a new mutant reaching ' + \
+                   str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    axs_rate.set_ylabel('Normal cell growth rate')
+    axs[1].set_ylabel('Mutation risk')
+    axs[2].set_ylabel('Cumulative risk')
+    for i in range(3):
+        axs[i].set_xlabel('Time')
+
+    axs[0].set_ylim(0, axs[0].get_ylim()[1])
+    axs_rate.set_ylim(0, axs_rate.get_ylim()[1])
+    axs[1].set_ylim(0, axs[1].get_ylim()[1])
+    axs[1].set_yticks([0])
+    axs[2].set_ylim(0, axs[2].get_ylim()[1])
+    axs[2].set_yticks([0])
+
+    axs[0].tick_params(axis='y', colors='orange')
+    axs_rate.tick_params(axis='y', colors='blue')
+    # axs[0].legend(frameon=False)
 
     if save is not None:
         pdf_out.savefig()
@@ -1148,7 +1218,7 @@ def verification_plots(paramfile, infile, outfile, save):
         extent=(np.min(parameter_axis_up), np.max(parameter_axis_up),
                 np.min(time_axis_up), np.max(time_axis_up)),
         aspect=lr(parameter_axis_up)/lr(time_axis_up),
-        cmap=cm.cubehelix,
+        cmap=cm.viridis,
         origin='lower'
     )
 
@@ -1166,7 +1236,7 @@ def verification_plots(paramfile, infile, outfile, save):
         extent=(np.min(parameter_axis_down), np.max(parameter_axis_down),
                 np.min(time_axis_down), np.max(time_axis_down)),
         aspect=lr(parameter_axis_down)/lr(time_axis_down),
-        cmap=cm.cubehelix,
+        cmap=cm.viridis,
         origin='lower'
     )
 
@@ -1449,12 +1519,15 @@ def generate_dataset_holiday(paramfile, dbfile, outfile, history_id):
 
 
 @main.command()
+@click.option('-p', '--paramfile', type=click.Path())
 @click.option('-i', '--infile', type=click.Path())
 @click.option('--save', type=click.Path(), default=None)
-def plot_dataset_holiday(infile, save):
+def plot_dataset_holiday(paramfile, infile, save):
     """
     Plots for examining input to drug holiday simulator
     """
+
+    simtools.PARAMS = toml.load(paramfile)
 
     def lr(x):
         return abs(x[-1] - x[0])
@@ -1488,76 +1561,361 @@ def plot_dataset_holiday(infile, save):
     else:
         plt.show()
 
-    # mean child density over time
+    # cumulative growth heatmap
     fig, axs = plt.subplots()
+    fig.set_size_inches(6, 4)
 
-    child_density = np.array(gp_pd['parameter_density'])
-    parameter_axis = np.array(gp_pd['parameter_axis'])
-    time_axis = np.array(gp_pd['time_axis'])
-    time_points = time_axis.shape[0]
-    parameter_range = np.max(parameter_axis) - np.min(parameter_axis)
-    print(child_density.shape)
-    print(time_points)
+    ts_start_axis = np.array(sorted(set(gp_pd['holiday_parameters'][:, 0])))
+    ts_duration_axis = np.array(sorted(set(gp_pd['holiday_parameters'][:, 1])))
+    start_axis = ts_start_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
+    duration_axis = ts_duration_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
 
-    average_child_density = \
-        np.array([[np.sum(parameter_axis*child_density[i, :, j]/ \
-                          parameter_axis.size*parameter_range)
-                   for i in range(time_points)]
-                  for j in range(child_density.shape[2])])
+    coordinates = [(np.where(ts_start_axis==x)[0][0],
+                    np.where(ts_duration_axis==y)[0][0])
+                   for x, y in gp_pd['holiday_parameters'][:, ]]
+    cumulative_map = np.empty(shape=(start_axis.size, duration_axis.size))
+    cumulative_map[:] = np.nan
 
-    print(average_child_density.shape)
+    for i in range(gp_pd['parameter_density'].shape[0]):
+        time_axis = gp_pd['time_axis'][i, :]
+        growth_rate = gp_pd['growth_rate'][i, :]
 
-    density_range = np.max(average_child_density) - np.min(average_child_density)
+        cumulative_map[coordinates[i]] = np.sum(growth_rate)
 
-    for i in range(time_axis.shape[0]):
-        print(time_axis[i, :].shape, average_child_density[:, i].shape)
-        plt.plot(time_axis[i, :], average_child_density[:, i] + i*density_range*1.2,
-                 color='k', linewidth=0.5)
+    print(cumulative_map)
+    print(np.nanmax(cumulative_map))
+    print(np.nanmin(cumulative_map))
+    print(np.where(cumulative_map == np.nanmax(cumulative_map)))
+    print(np.where(cumulative_map == np.nanmin(cumulative_map)))
+    cum_min = np.where(cumulative_map == np.nanmin(cumulative_map))
+    print(ts_start_axis[cum_min[0]])
+    print(ts_duration_axis[cum_min[1]])
+
+    print(cumulative_map[0, :])
+    print(cumulative_map[:, 0])
+    zero_effect = np.mean(cumulative_map[:, 0])
+
+    print("zero_effect", zero_effect, np.std(cumulative_map[:, 0]))
+    effect_range = max(abs(np.min(cumulative_map)), abs(np.max(cumulative_map)))
+
+    img = axs.imshow(
+        np.transpose(cumulative_map),
+        extent=(np.min(start_axis), np.max(start_axis),
+                np.min(duration_axis), np.max(duration_axis)),
+        aspect=lr(start_axis)/lr(duration_axis),
+        cmap=cm.RdBu_r,
+        origin='lower',
+        vmin=effect_range - (effect_range - zero_effect)*2,
+        vmax=effect_range
+    )
+
+    cbr = fig.colorbar(img, ax=axs, fraction=0.046, pad=0.04)
+    cbr.set_label('Average divisions per surviving cell')
+
+    axs.set_xlabel('Holiday start day')
+    axs.set_ylabel('Holiday duration [days]')
 
     if save is not None:
         pdf_out.savefig()
     else:
         plt.show()
 
-    # mean child density#  over time heatmap
+
+    # holiday effect (if repeated)
+    fig, axs = plt.subplots()
+
+    ts_start_axis = np.array(sorted(set(gp_pd['holiday_parameters'][:, 0])))
+    ts_duration_axis = np.array(sorted(set(gp_pd['holiday_parameters'][:, 1])))
+    start_axis = ts_start_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
+    duration_axis = ts_duration_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
+
+    coordinates = [(np.where(ts_start_axis==x)[0][0],
+                    np.where(ts_duration_axis==y)[0][0])
+                   for x, y in gp_pd['holiday_parameters'][:, ]]
+    cumulative_map = np.empty(shape=(start_axis.size, duration_axis.size))
+    cumulative_map[:] = np.nan
+
+    for i in range(gp_pd['parameter_density'].shape[0]):
+        time_axis = gp_pd['time_axis'][i, :]
+        growth_rate = gp_pd['growth_rate'][i, :]
+
+        cumulative_map[coordinates[i]] = np.sum(growth_rate)
+
+    print(cumulative_map)
+    print(np.nanmax(cumulative_map))
+    print(np.nanmin(cumulative_map))
+    print(np.where(cumulative_map == np.nanmax(cumulative_map)))
+    print(np.where(cumulative_map == np.nanmin(cumulative_map)))
+    cum_min = np.where(cumulative_map == np.nanmin(cumulative_map))
+    print(ts_start_axis[cum_min[0]])
+    print(ts_duration_axis[cum_min[1]])
+
+    zero_effect = np.mean(cumulative_map[0, :])
+
+    print("zero_effect", zero_effect, np.std(cumulative_map[:, 0]))
+
+    cumulative_map = zero_effect - cumulative_map
+
+    effect_range = max(abs(np.min(cumulative_map)), abs(np.max(cumulative_map)))
+
+    img = axs.imshow(
+        np.transpose(cumulative_map),
+        extent=(np.min(start_axis), np.max(start_axis),
+                np.min(duration_axis), np.max(duration_axis)),
+        aspect=lr(start_axis)/lr(duration_axis),
+        cmap=cm.BrBG,
+        origin='lower',
+        vmin=-effect_range,
+        vmax=effect_range
+    )
+
+    cbr = fig.colorbar(img, ax=axs, fraction=0.046, pad=0.04)
+    # cbr.set_ticklabels(['Low', 'High'])
+
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+
+    # # mean child density over time
     # fig, axs = plt.subplots()
 
     # child_density = np.array(gp_pd['parameter_density'])
     # parameter_axis = np.array(gp_pd['parameter_axis'])
-    # time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
+    # time_axis = np.array(gp_pd['time_axis'])
     # time_points = time_axis.shape[0]
     # parameter_range = np.max(parameter_axis) - np.min(parameter_axis)
     # print(child_density.shape)
     # print(time_points)
 
     # average_child_density = \
-    #     np.array([[np.sum(parameter_axis*child_density[j, :, i]/ \
+    #     np.array([[np.sum(parameter_axis*child_density[i, :, j]/ \
     #                       parameter_axis.size*parameter_range)
     #                for i in range(time_points)]
-    #               for j in range(child_density.shape[0])])
+    #               for j in range(child_density.shape[2])])
 
-    # fig.set_size_inches(4, 4)
-    # img = axs.imshow(
-    #     np.transpose(average_child_density),
-    #     extent=(np.min(parameter_axis), np.max(parameter_axis),
-    #             np.min(time_axis), np.max(time_axis)),
-    #     aspect=lr(parameter_axis)/lr(time_axis),
-    #     vmin=np.min(parameter_axis), vmax=np.max(parameter_axis),
-    #     cmap=cm.cubehelix,
-    #     origin='lower'
-    # )
+    # print(average_child_density.shape)
+
+    # density_range = np.max(average_child_density) - np.min(average_child_density)
+
+    # for i in range(time_axis.shape[0]):
+    #     print(time_axis[i, :].shape, average_child_density[:, i].shape)
+    #     plt.plot(time_axis[i, :], average_child_density[:, i] + i*density_range*1.2,
+    #              color='k', linewidth=0.5)
 
     # if save is not None:
     #     pdf_out.savefig()
     # else:
     #     plt.show()
 
-    # time axis homogenaeity
+    # # mean child density#  over time heatmap
+    # # fig, axs = plt.subplots()
+
+    # # child_density = np.array(gp_pd['parameter_density'])
+    # # parameter_axis = np.array(gp_pd['parameter_axis'])
+    # # time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
+    # # time_points = time_axis.shape[0]
+    # # parameter_range = np.max(parameter_axis) - np.min(parameter_axis)
+    # # print(child_density.shape)
+    # # print(time_points)
+
+    # # average_child_density = \
+    # #     np.array([[np.sum(parameter_axis*child_density[j, :, i]/ \
+    # #                       parameter_axis.size*parameter_range)
+    # #                for i in range(time_points)]
+    # #               for j in range(child_density.shape[0])])
+
+    # # fig.set_size_inches(4, 4)
+    # # img = axs.imshow(
+    # #     np.transpose(average_child_density),
+    # #     extent=(np.min(parameter_axis), np.max(parameter_axis),
+    # #             np.min(time_axis), np.max(time_axis)),
+    # #     aspect=lr(parameter_axis)/lr(time_axis),
+    # #     vmin=np.min(parameter_axis), vmax=np.max(parameter_axis),
+    # #     cmap=cm.viridis,
+    # #     origin='lower'
+    # # )
+
+    # # if save is not None:
+    # #     pdf_out.savefig()
+    # # else:
+    # #     plt.show()
+
+    # # time axis homogenaeity
+    # fig, axs = plt.subplots()
+    # time_axis = np.array(gp_pd['time_axis'])
+    # average_time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
+    # for i in range(time_axis.shape[0]):
+    #     axs.plot(time_axis[i, :] - average_time_axis, alpha=0.5, linewidth=1.0, color='k')
+
+    # if save is not None:
+    #     pdf_out.savefig()
+    # else:
+        # plt.show()
+
+    if save is not None:
+        pdf_out.close()
+
+
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-i', '--infile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+@click.option('-t', '--interfile', type=click.Path(), default=None)
+def process_holiday(paramfile, infile, outfile, interfile):
+
+    data = h5py.File(outfile, 'r')
+    gp_result = data['result']
+
+    indata = h5py.File(infile, 'r')
+    gp_input = indata['parameter_density']
+    parameter_density = gp_input['parameter_density']
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    def lr(x):
+        return x[1] - x[0]
+
+    ts_start_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 0])))
+    ts_duration_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 1])))
+    start_axis = ts_start_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
+    duration_axis = ts_duration_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
+
+    coordinates = [(np.where(ts_start_axis==x)[0][0],
+                    np.where(ts_duration_axis==y)[0][0])
+                   for x, y in gp_input['holiday_parameters'][:, ]]
+    cumulative_map = np.zeros(shape=(start_axis.size, duration_axis.size))
+
+    for i in range(parameter_density.shape[0]):
+        print(i, parameter_density.shape[0])
+        growth_rate = gp_input['growth_rate'][i, :]
+        escaped_sum = np.sum(gp_result['escaped'][:, :, i], axis=0) / \
+                  simtools.PARAMS['mpi_holiday_simulations_per_timeline']
+
+        cumulative_map[coordinates[i]] = np.sum(escaped_sum*growth_rate)
+
+    print(cumulative_map)
+
+    inter = h5py.File(interfile, 'w')
+    gp_proc = inter.create_group('processed_output')
+    # gp_proc.create_dataset('cumulative_risk', cumulative_map.shape)
+    gp_proc['cumulative_risk'] = cumulative_map
+
+
+@main.command()
+@click.option('-p', '--paramfile', type=click.Path())
+@click.option('-i', '--infile', type=click.Path())
+@click.option('-o', '--outfile', type=click.Path())
+@click.option('-t', '--interfile', type=click.Path(), default=None)
+@click.option('--save', type=click.Path(), default=None)
+def plot_processed_holiday(paramfile, infile, outfile, interfile, save):
+
+    data = h5py.File(outfile, 'r')
+    gp_result = data['result']
+
+    indata = h5py.File(infile, 'r')
+    gp_input = indata['parameter_density']
+
+    inter = h5py.File(interfile, 'r')
+    gp_proc = inter['processed_output']
+
+    simtools.PARAMS = toml.load(paramfile)
+
+    if save is not None:
+        pdf_out = PdfPages(save)
+
+    # heatmap
+
     fig, axs = plt.subplots()
-    time_axis = np.array(gp_pd['time_axis'])
-    average_time_axis = np.mean(np.array(gp_pd['time_axis']), axis=0)
-    for i in range(time_axis.shape[0]):
-        axs.plot(time_axis[i, :] - average_time_axis, alpha=0.5, linewidth=1.0, color='k')
+
+    def lr(x):
+        return x[-1] - x[0]
+
+    ts_start_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 0])))
+    ts_duration_axis = np.array(sorted(set(gp_input['holiday_parameters'][:, 1])))
+    start_axis = ts_start_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
+    duration_axis = ts_duration_axis \
+                 /(simtools.PARAMS['time_points_up']) \
+                 *simtools.PARAMS['time_range_up'][1]
+
+    coordinates = [(np.where(ts_start_axis==x)[0][0],
+                    np.where(ts_duration_axis==y)[0][0])
+                   for x, y in gp_input['holiday_parameters'][:, ]]
+
+    cumulative_map = np.array(gp_proc['cumulative_risk'])
+
+    img = axs.imshow(
+        np.transpose(cumulative_map),
+        extent=(np.min(start_axis), np.max(start_axis),
+                np.min(duration_axis), np.max(duration_axis)),
+        aspect=lr(start_axis)/lr(duration_axis),
+        cmap=cm.magma_r,
+        origin='lower'
+    )
+
+    print(lr(start_axis), lr(duration_axis))
+
+    cbr = fig.colorbar(img, ax=axs, fraction=0.046, pad=0.04)
+    cbr.set_label('Cumulative mutation risk [multiples of baseline]')
+    max_c = np.max(cumulative_map)/np.min(cumulative_map)
+    cbr.set_ticks([(x + 1)*np.min(cumulative_map) for x in range(int(max_c + 1))])
+    cbr.set_ticklabels([(x + 1) for x in range(int(max_c + 1))])
+
+    axs.set_xlabel('Holiday start day')
+    axs.set_ylabel('Holiday duration [days]')
+
+    plt.tight_layout()
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
+    # linearity comparison
+
+    final_risk = np.array(gp_proc['cumulative_risk'][-1, :])
+
+    cumulative_growth = np.empty(shape=(start_axis.size, duration_axis.size))
+    cumulative_growth[:] = np.nan
+
+    for i in range(gp_input['parameter_density'].shape[0]):
+        time_axis = gp_input['time_axis'][i, :]
+        growth_rate = gp_input['growth_rate'][i, :]
+
+        cumulative_growth[coordinates[i]] = np.sum(growth_rate)
+
+    cum_min = np.where(cumulative_growth == np.nanmin(cumulative_growth))
+    zero_effect = np.mean(cumulative_growth[:, 0])
+
+    effect_range = max(abs(np.min(cumulative_growth)), abs(np.max(cumulative_growth)))
+
+    final_rate = cumulative_growth[-1, :]
+
+    fig, axs = plt.subplots()
+    ax2 = axs.twinx()
+
+    axs.plot(duration_axis, final_rate, color='blue')
+    ax2.plot(duration_axis, final_risk, color='orange')
+
+    axs.set_xlabel('Holiday duration [days]')
+    axs.set_ylabel('Average divisions per surviving cell')
+    ax2.set_ylabel('Cumulative mutation risk')
 
     if save is not None:
         pdf_out.savefig()
@@ -1566,6 +1924,7 @@ def plot_dataset_holiday(infile, save):
 
     if save is not None:
         pdf_out.close()
+
 
 
 @main.command()
@@ -1683,7 +2042,7 @@ def holiday_plots(paramfile, infile, outfile, save):
         extent=(np.min(start_axis), np.max(start_axis),
                 np.min(duration_axis), np.max(duration_axis)),
         aspect=lr(start_axis)/lr(duration_axis),
-        cmap=cm.cubehelix,
+        cmap=cm.viridis,
         origin='lower'
     )
 
@@ -1707,7 +2066,7 @@ def holiday_plots(paramfile, infile, outfile, save):
         extent=(np.min(start_axis), np.max(start_axis),
                 np.min(duration_axis), np.max(duration_axis)),
         aspect=lr(start_axis)/lr(duration_axis),
-        cmap=cm.cubehelix,
+        cmap=cm.viridis,
         origin='lower'
     )
 

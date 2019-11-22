@@ -195,6 +195,54 @@ rule holiday:
         """
 
 
+rule process_holiday:
+    input:
+        infile = "intermediate/{name}.holiday-in.hdf5",
+        outfile = "intermediate/{name}.holiday-out.hdf5",
+    output:
+        "intermediate/{name}.holiday-processed.hdf5"
+    shell:
+        """
+        python3 code/plots.py process-holiday \
+            -p simulation-config.toml \
+            -i {input.infile} \
+            -o {input.outfile} \
+            -t {output}
+        """
+
+
+rule plot_processed_holiday_output:
+    input:
+        infile = "intermediate/{name}.holiday-in.hdf5",
+        outfile = "intermediate/{name}.holiday-out.hdf5",
+        interfile = "intermediate/{name}.holiday-processed.hdf5"
+    output:
+        "results/figures/{name}.holiday-processed.pdf"
+    shell:
+        """
+        python3 code/plots.py plot-processed-holiday \
+            -p simulation-config.toml \
+            -i {input.infile} \
+            -o {input.outfile} \
+            -t {input.interfile} \
+            --save {output}
+        """
+
+
+rule plot_holiday_input:
+    input:
+        "intermediate/{name}.holiday-in.hdf5"
+    output:
+        "results/figures/{name}.holiday-input.pdf"
+    shell:
+        """
+        python3 code/plots.py plot-dataset-holiday \
+            -p simulation-config.toml \
+            -i {input} \
+            --save {output}
+        """
+
+
 rule plot_holiday_output:
     input:
         infile = "intermediate/{name}.holiday-in.hdf5",
