@@ -420,6 +420,13 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     parameter_range = simtools.PARAMS['parameter_range'][1] - \
                       simtools.PARAMS['parameter_range'][0]
 
+    extra_width = simtools.PARAMS['optimum_treatment'] - simtools.PARAMS['optimum_normal']
+    narrow_range = simtools.PARAMS['optimum_treatment'] - simtools.PARAMS['optimum_normal'] + 2*extra_width
+    # parameter_middle = (simtools.PARAMS['optimum_treatment'] + simtools.PARAMS['optimum_normal'])/2
+    parameter_bottom = int(simtools.PARAMS['parameter_points']*(simtools.PARAMS['optimum_normal'] - extra_width - simtools.PARAMS['parameter_range'][0])/parameter_range)
+    parameter_top = int(simtools.PARAMS['parameter_points']*(simtools.PARAMS['optimum_treatment'] + extra_width - simtools.PARAMS['parameter_range'][0])/parameter_range)
+    print(parameter_bottom, parameter_top)
+
     observation = Observation()
     observation.parse_observations(obsfile_up, obsfile_down)
     obs = observation.get_instance(
@@ -452,18 +459,28 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
          parameter_axis.size*parameter_range \
          for i in range(parameters.shape[1])]
     )
+
+    parameter_axis = parameter_axis[parameter_bottom:parameter_top]
+    parameters = parameters[parameter_bottom:parameter_top, :]
+    print(np.min(parameter_axis), np.max(parameter_axis))
+
     axs[0].plot(time_axis, sim['x_up'], color='k',
                 linewidth=1.0)
     axs[0].imshow(
         parameters,
-        aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
+        # aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
+        # aspect=80/parameter_range,
+        aspect=80/narrow_range,
         extent=[0, simtools.PARAMS['time_range_up'][1],
                 np.min(parameter_axis), np.max(parameter_axis)],
+        # extent=[0, simtools.PARAMS['time_range_up'][1],
+        #         -1, 4],
         cmap=cm.magma,
         origin='lower'
     )
     axs[0].plot(time_axis, obs['x_up'], linewidth=1.0, color='k',
                 linestyle='--')
+    axs[0].set_ylim(np.min(parameter_axis), np.max(parameter_axis))
 
     f_initial = simtools.get_stationary_distribution_function(
         f_rate_up,
@@ -487,18 +504,25 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
          parameter_axis.size*parameter_range \
          for i in range(parameters.shape[1])]
     )
+
+    parameter_axis = parameter_axis[parameter_bottom:parameter_top]
+    parameters = parameters[parameter_bottom:parameter_top, :]
+
     axs[1].plot(time_axis, sim['x_down'], color='k',
                 linewidth=1.0, label="Mean (Simulated)")
     img = axs[1].imshow(
         parameters,
-        aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
+        # aspect=simtools.PARAMS['time_range_up'][1]/parameter_range,
+        # aspect=80/parameter_range,
+        aspect=80/narrow_range,
         extent=[0, simtools.PARAMS['time_range_down'][1],
                 np.min(parameter_axis), np.max(parameter_axis)],
         cmap=cm.magma,
         origin='lower'
     )
     axs[1].plot(time_axis, obs['x_down'], linewidth=1.0, color='k',
-                label="Mean (Hypothetical)", linestyle='--')
+                label="Mean (Reference)", linestyle='--')
+    axs[1].set_ylim(np.min(parameter_axis), np.max(parameter_axis))
 
     cbr = fig.colorbar(img, ax=axs[1], fraction=0.046, pad=0.04)
     cbr.set_label('Parameter density', labelpad=-15)
@@ -506,8 +530,8 @@ def abcfit(paramfile, obsfile_up, obsfile_down, dbfile, save, history_id):
     cbr.set_ticklabels(['Low', 'High'])
 
     axs[0].set_ylabel('$x$')
-    axs[0].set_xlabel('Time')
-    axs[1].set_xlabel('Time')
+    axs[0].set_xlabel('Time [days]')
+    axs[1].set_xlabel('Time [days]')
 
     axs[1].legend(loc='center left', bbox_to_anchor=(1.6, 0.5), frameon=False)
 
@@ -897,6 +921,111 @@ def mpiout(paramfile, infile, outfile, save):
         pdf_out.savefig()
     else:
         plt.show()
+
+
+    # plot of growth rate, escape probabability, mutation risk and survival function
+    # small multiples version
+    # fig, axs = plt.subplots(nrows=3)
+
+    mutation_probability = 1e-7
+
+    fig = plt.figure(constrained_layout=True)
+    fig.set_size_inches(7, 4)
+    gs = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
+    axs = []
+    axs.append(fig.add_subplot(gs[:, 0]))
+    axs.append(fig.add_subplot(gs[0, 1]))
+    axs.append(fig.add_subplot(gs[1, 1]))
+
+    time_axis = simtools.get_time_axis(simtools.PARAMS['time_range_up'][1],
+                                       simtools.PARAMS['time_points_up'])
+
+    escaped_sum = np.sum(gp_result['escaped'], axis=0) / \
+                  simtools.PARAMS['mpi_simulations_per_time_point']
+
+    growth_rate = gp_input['growth_rate']
+
+    axs[0].plot(time_axis, escaped_sum, color='orange', linewidth='0.4', alpha=0.5)
+    axs[0].plot(time_axis, moving_mean(escaped_sum, 101), color='orange', linewidth='1.0')
+    axs_rate = axs[0].twinx()
+    axs_rate.plot(time_axis, growth_rate, color='blue', linewidth=1.0)
+    axs[1].plot(time_axis, escaped_sum*growth_rate*mutation_probability, color='lightgrey', linewidth='0.5')
+    axs[1].plot(time_axis, moving_mean(escaped_sum*growth_rate*mutation_probability, 101), color='k',
+             linewidth='1.0', label='Mutation risk')
+
+    # calculate survivor function
+    # rate = lambda x: 0.01/(1 + np.exp(-0.1*(x - 20)))
+    dt = (np.max(time_axis) - np.min(time_axis))/len(time_axis);
+    print(time_axis[100], dt*100)
+    print(time_axis[500], dt*500)
+    # time = np.arange(0, 300, 1)
+    effective_population_size = 5e6
+    event_times = []
+    time_risk = escaped_sum*growth_rate*mutation_probability*effective_population_size
+    for __ in range(10000):
+        # if __%100 == 0:
+        #     print(__)
+        i = 0
+        while True:
+            if i < simtools.PARAMS['time_points_up']:
+                if np.random.random() < time_risk[i]*dt:
+                    event_times.append(time_axis[i])
+                    break
+            elif np.random.random() < time_risk[-1]*dt:
+                event_times.append(i*dt)
+                break
+            i += 1
+            if i*dt > 600:
+                event_times.append(i*dt)
+                break
+            # if i == simtools.PARAMS['time_points_up']:
+            #     event_times.append(time_axis[-1] + dt)
+            #     break
+    # print(event_times)
+    event_times = np.array(event_times)
+    long_time_axis = np.linspace(0, 500, 50)
+    surv = np.array([np.sum(event_times > x)/event_times.size for x in long_time_axis])
+
+    axs[2].plot(long_time_axis, surv, color='k', linestyle='-', linewidth=1.0)
+
+    # axs[2].plot(time_axis, np.cumsum(escaped_sum*growth_rate), color='k',
+    #              linestyle='-', linewidth='1.0')
+
+    # empty curves drawn on first axis for legend purposes
+    axs[0].plot([], [], color='orange',
+             linewidth='1.0', linestyle='-', label='Probability of reaching ' + str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    axs[0].plot([], [], color='blue',
+             linewidth='1.0', linestyle='-', label='Normal cell average growth rate')
+    # axs.plot([], [], color='k',
+             # linewidth='1.0', linestyle='-', label='Mutation risk')
+    # axs.plot([], [], color='k',
+             # linewidth='1.0', linestyle='--', label='Cumulative mutation risk')
+
+    axs[0].set_ylabel('Probability of a new mutant reaching ' + \
+                   str(simtools.PARAMS['mpi_max_population_size']) + ' cells')
+    axs_rate.set_ylabel('Normal cell growth rate')
+    axs[1].set_ylabel('Prob. of a mut. reaching\n' + str(simtools.PARAMS['mpi_max_population_size']) + ' cells being born')
+    axs[2].set_ylabel('Mutation free\nsurvival function')
+    for i in range(3):
+        axs[i].set_xlabel('Time')
+
+    axs[0].set_ylim(0, axs[0].get_ylim()[1])
+    axs_rate.set_ylim(0, axs_rate.get_ylim()[1])
+    axs[1].set_ylim(0, axs[1].get_ylim()[1])
+    # axs[1].set_yticks([0])
+    # axs[2].set_ylim(0, axs[2].get_ylim()[1])
+    axs[2].set_ylim(axs[2].get_ylim()[0], 1)
+    # axs[2].set_yticks([0])
+
+    axs[0].tick_params(axis='y', colors='orange')
+    axs_rate.tick_params(axis='y', colors='blue')
+    # axs[0].legend(frameon=False)
+
+    if save is not None:
+        pdf_out.savefig()
+    else:
+        plt.show()
+
 
 
     # plot of growth rate, escape probability and mutation vulnerability all in one
@@ -1317,6 +1446,12 @@ def verification_plots(paramfile, infile, outfile, save):
     for i in range(2):
         axs[i][1].set_xlabel('Time [days]')
         axs[i][1].set_ylabel('Standard deviation of $x$')
+
+    # axs[0][0].plot([], [], linewidth=1.0, color='k',
+    #             label="Simulation", linestyle='-')
+    # axs[0][0].plot([], [], linewidth=2.0, color='k',
+    #             label="Reference", linestyle='-')
+    # axs[0][0].legend(loc='center left', bbox_to_anchor=(4, -10), frameon=False, ncol=2)
 
     plt.tight_layout()
 
