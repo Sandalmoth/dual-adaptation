@@ -35,3 +35,5 @@ results/figures/up.down.holiday.pdf
 ```
 
 It is likely necessary to manually run some of the commands relating to mpi.pdf and holiday.pdf, as the computations are very heavy and intended to run on a cluster. Examine the output of snakemake -n -r [output] for the commands, and do that part manually on a cluster.
+
+A more extensive overview of how to use the code is provided in `notebooks/example.ipynb`
